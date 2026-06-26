@@ -56,9 +56,9 @@
     const g = e.accelerationIncludingGravity;
     if (!g || (g.x == null && g.y == null)) return;
     const a = screenAngle();
-    // Sideways (screen left/right) gravity: device long-axis (y) in landscape,
-    // short-axis (x) in portrait.
-    let h = (a === 90 || a === 270) ? g.y : g.x;
+    // Map device gravity to the screen's lateral axis; each landscape orientation
+    // rotates the device axes in opposite directions, so they need opposite signs.
+    let h = a === 90 ? -g.y : a === 270 ? g.y : a === 180 ? -g.x : g.x;
     if (h == null || Number.isNaN(h)) return;
 
     if (tiltNeutral === null) tiltNeutral = h;          // calibrate to current hold
