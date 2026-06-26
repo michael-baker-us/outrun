@@ -9,8 +9,8 @@ const CAR = {
   brake:     26000,
   decel:     7000,   // natural coast-down
   steerRate: 1.6,    // half-widths / second at full speed
-  offRoadMax:  3600,  // speed cap while on the grass (~40% of maxSpeed)
-  offRoadDrag: 16000, // extra slowdown / second while off-road
+  offRoadMax:  3000,  // speed cap while on the grass (~33% of maxSpeed, never 0)
+  offRoadDrag: 22000, // bleed-down rate off-road; must exceed accel so you can't climb back up
 };
 
 const keys = {};
@@ -30,11 +30,11 @@ function updateCar(car, dt) {
   if (keys['ArrowRight']) car.x += steer;
   car.x = Math.max(-2, Math.min(2, car.x));
 
-  // Off-road: the road spans x in [-1, 1]; on the grass you scrub speed hard
-  // and can't hold a high top speed.
-  if (Math.abs(car.x) > 1) {
-    car.speed = Math.max(car.speed - car.offRoadDrag * dt, 0);
-    car.speed = Math.min(car.speed, car.offRoadMax);
+  // Off-road: the road spans x in [-1, 1]. On the grass you bleed down hard
+  // toward a low cap (drag > accel, so holding forward can't climb back up),
+  // but you still creep forward at ~the cap -- never stuck at a dead stop.
+  if (Math.abs(car.x) > 1 && car.speed > car.offRoadMax) {
+    car.speed = Math.max(car.offRoadMax, car.speed - car.offRoadDrag * dt);
   }
 }
 

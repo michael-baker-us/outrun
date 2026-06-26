@@ -21,9 +21,40 @@ const COLORS = {
   dash:   ['#ffffff', null],
 };
 
-// Per-frame projection cache for visible segments, read by scenery.js / opponents.js.
-// Each entry: { segIdx, screenY, roadX, roadW, scale }.
+// Per-frame projection cache for visible segments, in near->far order (ascending dz).
+// Each entry: { segIdx, dz, curveX, screenY, roadX, roadW, scale }.
+// curveX is the road centerline's world-x at that segment (for following curves).
 const segmentProjections = [];
+
+// Frame context captured by drawRoad so projectObject() can place sprites/cars.
+const _frame = { W: 0, H: 0, playerX: 0 };
+
+// Linearly interpolate the road centerline world-x at an arbitrary camera depth.
+function curveXAtDepth(dz) {
+  const sp = segmentProjections;
+  if (sp.length === 0) return 0;
+  if (dz <= sp[0].dz) return sp[0].curveX;
+  for (let i = 1; i < sp.length; i++) {
+    if (dz <= sp[i].dz) {
+      const a = sp[i - 1], b = sp[i];
+      const t = (dz - a.dz) / ((b.dz - a.dz) || 1);
+      return a.curveX + (b.curveX - a.curveX) * t;
+    }
+  }
+  return sp[sp.length - 1].curveX;
+}
+
+// Project an object (car/sprite) from its exact camera depth `dz` and lateral
+// `offset` (in road half-widths). Continuous in dz -> no segment-snapping stutter.
+function projectObject(dz, offset) {
+  if (dz <= CAMERA_DEPTH) return null;
+  const scale = CAMERA_DEPTH / dz;
+  const W = _frame.W, H = _frame.H;
+  const w = scale * ROAD_WIDTH * W / 2;
+  const centerX = W / 2 + scale * (curveXAtDepth(dz) - _frame.playerX * ROAD_WIDTH) * W / 2;
+  const y = H / 2 + scale * CAMERA_HEIGHT * H / 2;
+  return { x: centerX + offset * w, y, w, scale };
+}
 
 function drawSky(ctx, screenW, screenH) {
   const grad = ctx.createLinearGradient(0, 0, 0, screenH / 2);
@@ -110,6 +141,7 @@ function drawRoad(ctx, segments, position, playerX, screenW, screenH) {
   ctx.fillStyle = COLORS.grass[0];
   ctx.fillRect(0, screenH / 2, screenW, screenH / 2);
 
+  _frame.W = screenW; _frame.H = screenH; _frame.playerX = playerX;
   segmentProjections.length = 0;
 
   const baseIndex   = Math.floor(position / SEGMENT_LENGTH) % NUM_SEGMENTS;
@@ -117,13 +149,17 @@ function drawRoad(ctx, segments, position, playerX, screenW, screenH) {
 
   let x  = 0;
   let dx = -(segments[baseIndex].curve * basePercent);
-  let maxy = screenH;
 
+  // Pass 1: project every segment near->far, accumulating curve. Only segments
+  // behind the camera are dropped -- no occlusion cull, so the set is stable
+  // frame-to-frame (the old cull flickered far segments in and out).
+  const frameSegs = [];
   for (let n = 0; n < DRAW_DISTANCE; n++) {
     const i = (baseIndex + n) % NUM_SEGMENTS;
     const seg = segments[i];
     const looped = i < baseIndex;
     const camZ = position - (looped ? TRACK_LENGTH : 0);
+    const curveX = x; // road centerline world-x at this segment's near edge
 
     const p1 = project(i * SEGMENT_LENGTH,       playerX * ROAD_WIDTH - x,      camZ, screenW, screenH);
     const p2 = project((i + 1) * SEGMENT_LENGTH, playerX * ROAD_WIDTH - x - dx, camZ, screenW, screenH);
@@ -131,11 +167,17 @@ function drawRoad(ctx, segments, position, playerX, screenW, screenH) {
     x  += dx;
     dx += seg.curve;
 
-    // Skip segments behind the camera, inverted, or already occluded by a nearer one.
-    if (p1.camZ <= CAMERA_DEPTH || p2.y >= p1.y || p2.y >= maxy) continue;
+    if (p1.camZ <= CAMERA_DEPTH) continue; // behind the camera only
 
-    renderSegment(ctx, screenW, p1, p2, seg.color);
-    segmentProjections.push({ segIdx: i, screenY: p1.y, roadX: p1.x, roadW: p1.w, scale: p1.scale });
-    maxy = p2.y;
+    frameSegs.push({ segIdx: i, p1, p2, color: seg.color, dz: p1.camZ, curveX });
+    segmentProjections.push({ segIdx: i, dz: p1.camZ, curveX,
+                              screenY: p1.y, roadX: p1.x, roadW: p1.w, scale: p1.scale });
+  }
+
+  // Pass 2: draw far->near so nearer trapezoids overdraw farther ones (painter's
+  // algorithm). No conditional culling means no flicker.
+  for (let k = frameSegs.length - 1; k >= 0; k--) {
+    const f = frameSegs[k];
+    renderSegment(ctx, screenW, f.p1, f.p2, f.color);
   }
 }

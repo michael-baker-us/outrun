@@ -47,11 +47,8 @@ function checkCollisions(opponents, car, cameraZ) {
 }
 
 function drawOpponents(ctx, opponents, cameraZ) {
-  // Build a quick lookup from segment index to its projection.
-  const projBySeg = {};
-  for (const p of segmentProjections) projBySeg[p.segIdx] = p;
-
-  // Draw far-to-near: sort by descending depth from camera.
+  // Draw far-to-near, projecting each car from its exact depth (continuous, so
+  // cars move smoothly instead of snapping between road segments).
   const ordered = opponents
     .map(opp => {
       let depth = opp.z - cameraZ;
@@ -61,15 +58,13 @@ function drawOpponents(ctx, opponents, cameraZ) {
     .filter(o => o.depth < DRAW_DISTANCE * SEGMENT_LENGTH)
     .sort((a, b) => b.depth - a.depth);
 
-  for (const { opp } of ordered) {
-    const segIdx = Math.floor(opp.z / SEGMENT_LENGTH) % NUM_SEGMENTS;
-    const proj = projBySeg[segIdx];
-    if (!proj) continue;
+  for (const { opp, depth } of ordered) {
+    const pr = projectObject(depth, opp.offset);
+    if (!pr) continue;
 
-    const x = proj.roadX + opp.offset * proj.roadW;
-    const w = Math.min(proj.roadW * OPP_WIDTH_FACTOR, OPP_MAX_WIDTH);
+    const w = Math.min(pr.w * OPP_WIDTH_FACTOR, OPP_MAX_WIDTH);
     if (w < 5) continue;
 
-    drawCarBody(ctx, x, proj.screenY, w, opp.color);
+    drawCarBody(ctx, pr.x, pr.y, w, opp.color);
   }
 }
