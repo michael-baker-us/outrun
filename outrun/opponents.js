@@ -8,6 +8,12 @@ const OPPONENT_COLORS = ['#2266cc', '#cccc22', '#22aa55', '#aa44cc', '#ee7711'];
 const OPP_WIDTH_FACTOR = 0.34;   // car width as a fraction of road half-width
 const OPP_MAX_WIDTH    = 200;    // px cap so a close car never fills the screen
 
+// Collision is lateral-overlap of the two cars, measured in road half-widths
+// (the road spans [-1, 1]). Half-width of each car: opponent = factor/2,
+// player ~0.10. Their sum is how close offsets must be to actually touch.
+const PLAYER_HALF_OFFSET = 0.10;
+const COLLISION_HALF     = OPP_WIDTH_FACTOR / 2 + PLAYER_HALF_OFFSET; // ~0.27
+
 function buildOpponents(count) {
   const opps = [];
   for (let i = 0; i < count; i++) {
@@ -38,7 +44,7 @@ function checkCollisions(opponents, car, cameraZ, dt) {
   for (const opp of opponents) {
     let depth = opp.z - cameraZ;
     if (depth < 0) depth += TRACK_LENGTH;
-    if (depth < SEGMENT_LENGTH * 1.2 && Math.abs(car.x - opp.offset) < 0.55) {
+    if (depth < SEGMENT_LENGTH * 1.2 && Math.abs(car.x - opp.offset) < COLLISION_HALF) {
       hit = true;
       if (car.speed > SPIN_TRIGGER_SPEED) {
         startSpinOut(car);                                       // crash -> spin out
