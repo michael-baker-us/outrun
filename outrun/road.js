@@ -3,7 +3,7 @@
 // successive projected points, with curve accumulated across the draw distance.
 
 const SEGMENT_LENGTH = 200;
-const NUM_SEGMENTS   = 200;
+const NUM_SEGMENTS   = 500;  // longer track -> more variety before it repeats
 const CAMERA_HEIGHT  = 1000;
 const CAMERA_DEPTH   = 0.84;  // ~1/tan(FOV/2)
 const ROAD_WIDTH     = 2000;  // world half-width of the road
@@ -68,14 +68,27 @@ function drawSky(ctx, screenW, screenH) {
   ctx.fillRect(0, 0, screenW, screenH / 2);
 }
 
-function buildSegments() {
-  const segs = [];
-  for (let i = 0; i < NUM_SEGMENTS; i++) {
-    let curve = 0;
-    if (i > 20  && i < 60)  curve =  2;
-    if (i > 80  && i < 120) curve = -3;
-    if (i > 140 && i < 170) curve =  4;
+// Curve strengths (curvature added per segment while turning).
+const CURVE = { gentle: 1.5, medium: 3, hard: 4.5 };
 
+const easeCurve = (a, b, p) => a + (b - a) * (1 - Math.cos(p * Math.PI)) / 2;
+
+// Apply a smooth curve onto the track: ease in to `curve`, hold, ease back to 0.
+// Easing the ends keeps straights and curves from meeting at a kink. Returns
+// the index after the curve.
+function addCurve(segs, start, enter, hold, leave, curve) {
+  let n = start;
+  for (let k = 0; k < enter && n < NUM_SEGMENTS; k++, n++) segs[n].curve = easeCurve(0, curve, k / enter);
+  for (let k = 0; k < hold  && n < NUM_SEGMENTS; k++, n++) segs[n].curve = curve;
+  for (let k = 0; k < leave && n < NUM_SEGMENTS; k++, n++) segs[n].curve = easeCurve(curve, 0, k / leave);
+  return n;
+}
+
+function buildSegments() {
+  const rnd  = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
+  const segs = [];
+
+  for (let i = 0; i < NUM_SEGMENTS; i++) {
     // Roadside scenery: trees with occasional billboards (kept sparse to
     // avoid a crowded, shimmering treeline at the horizon).
     const sprites = [];
@@ -87,9 +100,32 @@ function buildSegments() {
     if (i % 13 === 0) {
       sprites.push({ type: 'tree', offset: (i % 26 === 0 ? 1 : -1) * 3.6 });
     }
-
-    segs.push({ curve, color: Math.floor(i / STRIPE) % 2, sprites });
+    segs.push({ curve: 0, color: Math.floor(i / STRIPE) % 2, sprites });
   }
+
+  // Procedurally lay down straights and a mix of curve features. Leave a short
+  // straight tail so the loop seam (last segment -> first) stays smooth.
+  let i = rnd(6, 14);
+  while (i < NUM_SEGMENTS - 12) {
+    const dir = Math.random() < 0.5 ? -1 : 1;
+    const roll = Math.random();
+    if (roll < 0.34) {
+      // long gentle sweeper
+      i = addCurve(segs, i, rnd(6, 10), rnd(24, 44), rnd(6, 10), CURVE.gentle * dir);
+    } else if (roll < 0.62) {
+      // medium curve
+      i = addCurve(segs, i, rnd(4, 8), rnd(12, 22), rnd(4, 8), CURVE.medium * dir);
+    } else if (roll < 0.82) {
+      // sharp twist
+      i = addCurve(segs, i, rnd(3, 5), rnd(6, 12), rnd(3, 5), CURVE.hard * dir);
+    } else {
+      // S-curve: bend one way then straight back the other
+      i = addCurve(segs, i, rnd(3, 5), rnd(8, 14), rnd(3, 4), CURVE.medium * dir);
+      i = addCurve(segs, i, rnd(3, 4), rnd(8, 14), rnd(3, 5), CURVE.medium * -dir);
+    }
+    i += rnd(6, 18); // straight between features
+  }
+
   return segs;
 }
 

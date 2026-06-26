@@ -23,7 +23,7 @@ function init() {
   ctx = canvas.getContext('2d');
 
   segments = buildSegments();
-  opponents = buildOpponents(8);
+  opponents = buildOpponents(16);
   initInput();
   window.addEventListener('keydown', e => {
     if (state === 'gameover' && (e.key === 'r' || e.key === 'R')) resetGame();
