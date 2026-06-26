@@ -3,7 +3,7 @@
 // so they sit correctly on curves. Collision slows the player.
 
 const OPPONENT_COLORS = ['#2266cc', '#cccc22', '#22aa55', '#aa44cc', '#ee7711'];
-const TRACK_LENGTH = NUM_SEGMENTS * SEGMENT_LENGTH;
+// TRACK_LENGTH is defined in road.js.
 
 function buildOpponents(count) {
   const opps = [];
@@ -61,7 +61,7 @@ function drawOpponents(ctx, opponents, cameraZ) {
     if (!proj) continue;
 
     const x = proj.roadX + opp.offset * proj.roadW;
-    const w = proj.scale * 260;
+    const w = proj.roadW * 0.9;
     const h = w * 0.55;
     if (w < 4) continue;
 

@@ -11,19 +11,20 @@ function drawScenery(ctx, segments) {
     for (const sprite of seg.sprites) {
       const screenX = proj.roadX + sprite.offset * proj.roadW;
       const baseY = proj.screenY;
-      const scale = proj.scale;
+      // Size scenery relative to the road's on-screen half-width.
+      const roadW = proj.roadW;
 
       if (sprite.type === 'tree') {
-        drawTree(ctx, screenX, baseY, scale);
+        drawTree(ctx, screenX, baseY, roadW);
       } else if (sprite.type === 'billboard') {
-        drawBillboard(ctx, screenX, baseY, scale);
+        drawBillboard(ctx, screenX, baseY, roadW);
       }
     }
   }
 }
 
-function drawTree(ctx, x, baseY, scale) {
-  const h = scale * 220;
+function drawTree(ctx, x, baseY, roadW) {
+  const h = roadW * 2.2;
   const trunkW = Math.max(2, h * 0.12);
   const canopyR = h * 0.45;
   if (h < 2) return;
@@ -39,8 +40,8 @@ function drawTree(ctx, x, baseY, scale) {
   triangle(ctx, x, baseY - h * 0.75, x - canopyR * 0.8, baseY - h * 0.3, x + canopyR * 0.8, baseY - h * 0.3);
 }
 
-function drawBillboard(ctx, x, baseY, scale) {
-  const w = scale * 260;
+function drawBillboard(ctx, x, baseY, roadW) {
+  const w = roadW * 2.0;
   const h = w * 0.6;
   const postW = Math.max(2, w * 0.08);
   if (w < 3) return;

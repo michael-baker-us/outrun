@@ -83,14 +83,7 @@ function update(dt) {
 }
 
 function render() {
-  const startSeg = Math.floor(cameraZ / SEGMENT_LENGTH) % NUM_SEGMENTS;
-  let cameraX = CAR.x;
-  for (let i = 0; i < DRAW_DISTANCE; i++) {
-    const seg = segments[(startSeg + i) % NUM_SEGMENTS];
-    cameraX -= seg.curve * 0.0015 * i;
-  }
-
-  drawRoad(ctx, segments, cameraZ, cameraX, WIDTH, HEIGHT);
+  drawRoad(ctx, segments, cameraZ, CAR.x, WIDTH, HEIGHT);
   drawScenery(ctx, segments);
   drawOpponents(ctx, opponents, cameraZ);
   drawCar(ctx, WIDTH, HEIGHT);
