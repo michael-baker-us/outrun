@@ -29,21 +29,27 @@ function updateOpponents(opponents, dt) {
   }
 }
 
-// Returns true if the player is in contact with a car this frame.
-// Smooth, dt-based: you can't drive through, so you decelerate toward the
-// blocking car's speed and get nudged aside -- no per-frame teleport/jolt.
+// Handle player/traffic contact. A fast hit triggers an OutRun-style spin-out;
+// a slow touch just brakes you toward the blocking car's speed and nudges aside.
 function checkCollisions(opponents, car, cameraZ, dt) {
+  if (car.spinTime > 0) return false; // already spinning out
+
   let hit = false;
   for (const opp of opponents) {
     let depth = opp.z - cameraZ;
     if (depth < 0) depth += TRACK_LENGTH;
     if (depth < SEGMENT_LENGTH * 1.2 && Math.abs(car.x - opp.offset) < 0.55) {
       hit = true;
+      if (car.speed > SPIN_TRIGGER_SPEED) {
+        startSpinOut(car);                                       // crash -> spin out
+        return true;
+      }
+      // Slow contact: can't drive through, brake and ease aside.
       if (car.speed > opp.speed) {
-        car.speed = Math.max(opp.speed, car.speed - 40000 * dt); // brake into them
+        car.speed = Math.max(opp.speed, car.speed - 40000 * dt);
       }
       const dir = car.x < opp.offset ? -1 : 1;
-      car.x += dir * 1.3 * dt;                                   // smooth sideways nudge
+      car.x += dir * 1.3 * dt;
       car.x = Math.max(-2, Math.min(2, car.x));
     }
   }

@@ -11,7 +11,21 @@ const CAR = {
   steerRate: 1.6,    // half-widths / second at full speed
   offRoadMax:  3000,  // speed cap while on the grass (~33% of maxSpeed, never 0)
   offRoadDrag: 22000, // bleed-down rate off-road; must exceed accel so you can't climb back up
+  spinTime:  0,      // seconds left in a crash spin-out (0 = normal control)
+  spinAngle: 0,      // current sprite rotation during a spin-out
 };
+
+// OutRun-style spin-out on crashing into traffic.
+const SPIN_DURATION      = 1.5;                       // seconds of lost control
+const SPIN_TURNS         = 3;                         // full rotations (integer -> ends facing forward)
+const SPIN_RATE          = SPIN_TURNS * 2 * Math.PI / SPIN_DURATION;
+const SPIN_DECEL         = 16000;                     // hard slowdown to near-stop while spinning
+const SPIN_TRIGGER_SPEED = 2500;                      // below this a contact just bumps, no spin
+
+function startSpinOut(car) {
+  car.spinTime = SPIN_DURATION;
+  car.spinAngle = 0;
+}
 
 const keys = {};
 
@@ -21,6 +35,15 @@ function initInput() {
 }
 
 function updateCar(car, dt) {
+  // Spin-out: no control, sprite rotates, speed bleeds to almost nothing.
+  if (car.spinTime > 0) {
+    car.spinTime -= dt;
+    car.spinAngle += SPIN_RATE * dt;
+    car.speed = Math.max(0, car.speed - SPIN_DECEL * dt);
+    if (car.spinTime <= 0) { car.spinTime = 0; car.spinAngle = 0; }
+    return;
+  }
+
   if (keys['ArrowUp'])        car.speed = Math.min(car.speed + car.accel * dt, car.maxSpeed);
   else if (keys['ArrowDown']) car.speed = Math.max(car.speed - car.brake * dt, 0);
   else                        car.speed = Math.max(car.speed - car.decel * dt, 0);
@@ -39,7 +62,7 @@ function updateCar(car, dt) {
 }
 
 function drawCar(ctx, screenW, screenH) {
-  drawCar3D(ctx, screenW / 2, screenH - 18, 120, '#cc2222');
+  drawCar3D(ctx, screenW / 2, screenH - 18, 120, '#cc2222', CAR.spinAngle);
 }
 
 // --- Pre-rendered car sprites ---------------------------------------------
@@ -65,11 +88,23 @@ function getCarSprite(color) {
   return sprite;
 }
 
-function drawCar3D(ctx, cx, bottomY, w, color) {
+function drawCar3D(ctx, cx, bottomY, w, color, angle = 0) {
   const sp = getCarSprite(color);
   const scale = w / CAR_REF_W;
-  ctx.drawImage(sp.canvas, cx - sp.anchorX * scale, bottomY - sp.anchorY * scale,
-                sp.w * scale, sp.h * scale);
+  const dx = cx - sp.anchorX * scale, dy = bottomY - sp.anchorY * scale;
+  const dw = sp.w * scale, dh = sp.h * scale;
+
+  if (angle) {
+    const pivotY = bottomY - w * 0.30; // roughly the car's body center
+    ctx.save();
+    ctx.translate(cx, pivotY);
+    ctx.rotate(angle);
+    ctx.translate(-cx, -pivotY);
+    ctx.drawImage(sp.canvas, dx, dy, dw, dh);
+    ctx.restore();
+  } else {
+    ctx.drawImage(sp.canvas, dx, dy, dw, dh);
+  }
 }
 
 // ---- Shared 3D-ish car (rear view), centered at cx with its base at bottomY ----
