@@ -68,6 +68,8 @@ function drawSmoke(ctx, screenW, screenH) {
 }
 
 const keys = {};
+let tiltSteer = 0;          // analog steering from device tilt (-1..1), set by controls.js
+const TILT_GAIN = 1.4;      // how strongly full tilt steers vs a held key
 
 function initInput() {
   window.addEventListener('keydown', e => keys[e.key] = true);
@@ -98,6 +100,7 @@ function updateCar(car, dt) {
   const steer = car.steerRate * dt * (car.speed / car.maxSpeed);
   if (keys['ArrowLeft'])  car.x -= steer;
   if (keys['ArrowRight']) car.x += steer;
+  if (tiltSteer)          car.x += steer * tiltSteer * TILT_GAIN;
   car.x = Math.max(-2, Math.min(2, car.x));
 
   // Off-road: the road spans x in [-1, 1]. On the grass you bleed down hard
