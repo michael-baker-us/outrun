@@ -4,16 +4,72 @@
   box-sizing: border-box;
 }
 
-body {
+html, body {
+  height: 100%;
   background: #000;
+  overflow: hidden;
+  /* Prevent mobile scroll/zoom gestures and text selection while playing. */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100vh;
-  overflow: hidden;
 }
 
 canvas {
   display: block;
+  /* Scale to fit the viewport while keeping the 800x500 aspect ratio. */
+  max-width: 100vw;
+  max-height: 100vh;
   image-rendering: pixelated;
+  touch-action: none;
 }
+
+/* ---- Touch controls (hidden until a touch device is detected) ---- */
+#controls {
+  display: none;
+}
+
+body.touch #controls {
+  display: block;
+}
+
+.pad {
+  position: fixed;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  gap: 18px;
+  z-index: 10;
+}
+
+.pad-left  { left:  calc(16px + env(safe-area-inset-left, 0px)); }
+.pad-right { right: calc(16px + env(safe-area-inset-right, 0px)); }
+
+.ctl {
+  width: 78px;
+  height: 78px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font: bold 22px/1 monospace;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.ctl-gas   { width: 92px; height: 92px; border-color: #6f6; background: rgba(60, 220, 60, 0.22); font-size: 18px; }
+.ctl-brake { font-size: 13px; }
+
+.ctl.active {
+  background: rgba(255, 255, 255, 0.42);
+}
+.ctl-gas.active { background: rgba(60, 220, 60, 0.5); }

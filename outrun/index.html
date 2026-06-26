@@ -2,17 +2,31 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>OutRun</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <canvas id="game"></canvas>
+
+  <!-- On-screen controls (shown on touch devices) -->
+  <div id="controls">
+    <div class="pad pad-left">
+      <button id="btn-left"  class="ctl" aria-label="Steer left">&#9664;</button>
+      <button id="btn-right" class="ctl" aria-label="Steer right">&#9654;</button>
+    </div>
+    <div class="pad pad-right">
+      <button id="btn-brake" class="ctl ctl-brake" aria-label="Brake">BRAKE</button>
+      <button id="btn-gas"   class="ctl ctl-gas" aria-label="Accelerate">GAS</button>
+    </div>
+  </div>
+
   <script src="road.js"></script>
   <script src="scenery.js"></script>
   <script src="checkpoint.js"></script>
   <script src="opponents.js"></script>
   <script src="car.js"></script>
   <script src="game.js"></script>
+  <script src="controls.js"></script>
 </body>
 </html>
