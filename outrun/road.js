@@ -10,10 +10,14 @@ const ROAD_WIDTH     = 2000;  // world half-width of the road
 const DRAW_DISTANCE  = 120;   // segments drawn per frame
 const TRACK_LENGTH   = NUM_SEGMENTS * SEGMENT_LENGTH;
 
+const STRIPE = 3; // segments per alternating color block (coarser = scrolls, doesn't strobe)
+
 const COLORS = {
-  grass:  ['#10aa10', '#009900'],
-  rumble: ['#dd2222', '#eeeeee'],
-  road:   ['#777777', '#888888'],
+  // Low contrast between the two shades so the alternation reads as gentle
+  // motion rather than a per-frame strobe. Rumble stays vivid (edges only).
+  grass:  ['#1ba62b', '#149d22'],
+  rumble: ['#cc2b2b', '#efefef'],
+  road:   ['#8a8a8a', '#848484'],
   dash:   ['#ffffff', null],
 };
 
@@ -49,7 +53,7 @@ function buildSegments() {
       sprites.push({ type: 'tree', offset: (i % 14 === 0 ? 1 : -1) * 3.4 });
     }
 
-    segs.push({ curve, color: i % 2, sprites });
+    segs.push({ curve, color: Math.floor(i / STRIPE) % 2, sprites });
   }
   return segs;
 }
