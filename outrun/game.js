@@ -12,7 +12,7 @@ const TRACK_LEN       = NUM_SEGMENTS * SEGMENT_LENGTH;
 // (net -2s). Independent of track length so it isn't trivially short.
 const CHECKPOINT_GAP  = 50000;                     // cumulative distance between checkpoints
 
-let canvas, ctx, segments, opponents;
+let canvas, ctx, segments, opponents, trackSeed;
 let cameraZ, distance, score, timeLeft, state, lastTime;
 let nextCheckpoint, flashText, flashUntil;
 
@@ -22,7 +22,14 @@ function init() {
   canvas.height = HEIGHT;
   ctx = canvas.getContext('2d');
 
-  segments = buildSegments();
+  // Track seed: ?seed=<n> in the URL replays a specific layout; otherwise random.
+  const seedParam = new URLSearchParams(location.search).get('seed');
+  trackSeed = (seedParam !== null && /^\d+$/.test(seedParam))
+    ? (parseInt(seedParam, 10) >>> 0)
+    : (Math.floor(Math.random() * 0xffffffff) >>> 0);
+  console.log(`OutRun track seed: ${trackSeed}  (replay with ?seed=${trackSeed})`);
+
+  segments = buildSegments(trackSeed);
   opponents = buildOpponents(16);
   initInput();
   window.addEventListener('keydown', e => {
@@ -129,6 +136,13 @@ function drawHUD(ctx, w, h) {
   ctx.fillStyle = '#fff';
   ctx.fillText(`${mph} MPH`, w - 22, h - 22);
   ctx.textAlign = 'left';
+
+  // Track seed (bottom-left, small) so a layout can be replayed via ?seed=
+  ctx.font = 'bold 12px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.textAlign = 'left';
+  ctx.fillText(`SEED ${trackSeed}`, 14, h - 14);
+  ctx.font = 'bold 22px monospace';
 
   // Checkpoint flash (center)
   if (performance.now() < flashUntil) {
