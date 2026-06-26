@@ -3,7 +3,7 @@
 const WIDTH  = 800;
 const HEIGHT = 500;
 
-let canvas, ctx, segments;
+let canvas, ctx, segments, opponents;
 let cameraZ = 0;
 
 function init() {
@@ -13,16 +13,20 @@ function init() {
   ctx = canvas.getContext('2d');
 
   segments = buildSegments();
+  opponents = buildOpponents(8);
   initInput();
   requestAnimationFrame(loop);
 }
 
 function loop() {
   updateCar(CAR);
+  updateOpponents(opponents);
 
   // Advance camera by car speed
   cameraZ += CAR.speed;
   if (cameraZ >= NUM_SEGMENTS * SEGMENT_LENGTH) cameraZ -= NUM_SEGMENTS * SEGMENT_LENGTH;
+
+  checkCollisions(opponents, CAR, cameraZ);
 
   // Compute accumulated curve offset so the road bends around the car
   const startSeg = Math.floor(cameraZ / SEGMENT_LENGTH) % NUM_SEGMENTS;
@@ -34,6 +38,7 @@ function loop() {
 
   drawRoad(ctx, segments, cameraZ, cameraX, WIDTH, HEIGHT);
   drawScenery(ctx, segments);
+  drawOpponents(ctx, opponents, cameraZ);
   drawCar(ctx, WIDTH, HEIGHT);
   drawHUD(ctx, WIDTH, HEIGHT);
 
