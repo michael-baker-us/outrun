@@ -55,13 +55,13 @@ function loop(now) {
 }
 
 function update(dt) {
-  updateCar(CAR);
-  updateOpponents(opponents);
+  updateCar(CAR, dt);
+  updateOpponents(opponents, dt);
 
-  cameraZ += CAR.speed;
+  cameraZ += CAR.speed * dt;
   if (cameraZ >= TRACK_LEN) cameraZ -= TRACK_LEN;
 
-  distance += CAR.speed;
+  distance += CAR.speed * dt;
   score = Math.floor(distance / 100);
 
   checkCollisions(opponents, CAR, cameraZ);
