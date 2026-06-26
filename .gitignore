@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node (for any future JS tooling)
+node_modules/
+npm-debug.log*
+
+# Env
+.env
+.env.local
