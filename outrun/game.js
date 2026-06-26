@@ -67,7 +67,7 @@ function update(dt) {
   distance += CAR.speed * dt;
   score = Math.floor(distance / 100);
 
-  checkCollisions(opponents, CAR, cameraZ);
+  checkCollisions(opponents, CAR, cameraZ, dt);
 
   // Checkpoint: bank bonus time and flash a message.
   if (distance >= nextCheckpoint) {

@@ -56,12 +56,15 @@ function projectObject(dz, offset) {
   return { x: centerX + offset * w, y, w, scale };
 }
 
+let _skyGrad = null;
 function drawSky(ctx, screenW, screenH) {
-  const grad = ctx.createLinearGradient(0, 0, 0, screenH / 2);
-  grad.addColorStop(0,   '#1a4d8f');
-  grad.addColorStop(0.6, '#72d7ee');
-  grad.addColorStop(1,   '#ffd9a0');
-  ctx.fillStyle = grad;
+  if (!_skyGrad) {
+    _skyGrad = ctx.createLinearGradient(0, 0, 0, screenH / 2);
+    _skyGrad.addColorStop(0,   '#1a4d8f');
+    _skyGrad.addColorStop(0.6, '#72d7ee');
+    _skyGrad.addColorStop(1,   '#ffd9a0');
+  }
+  ctx.fillStyle = _skyGrad;
   ctx.fillRect(0, 0, screenW, screenH / 2);
 }
 

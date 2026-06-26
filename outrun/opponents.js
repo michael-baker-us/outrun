@@ -29,17 +29,21 @@ function updateOpponents(opponents, dt) {
   }
 }
 
-// Returns true if the player collided this frame.
-function checkCollisions(opponents, car, cameraZ) {
+// Returns true if the player is in contact with a car this frame.
+// Smooth, dt-based: you can't drive through, so you decelerate toward the
+// blocking car's speed and get nudged aside -- no per-frame teleport/jolt.
+function checkCollisions(opponents, car, cameraZ, dt) {
   let hit = false;
   for (const opp of opponents) {
     let depth = opp.z - cameraZ;
     if (depth < 0) depth += TRACK_LENGTH;
-    // Only the band right in front of the player can collide.
-    if (depth < SEGMENT_LENGTH * 1.5 && Math.abs(car.x - opp.offset) < 0.5) {
+    if (depth < SEGMENT_LENGTH * 1.2 && Math.abs(car.x - opp.offset) < 0.55) {
       hit = true;
-      car.speed *= 0.55;                                  // slow down on impact
-      car.x += (car.x < opp.offset ? -0.18 : 0.18);       // shove aside
+      if (car.speed > opp.speed) {
+        car.speed = Math.max(opp.speed, car.speed - 40000 * dt); // brake into them
+      }
+      const dir = car.x < opp.offset ? -1 : 1;
+      car.x += dir * 1.3 * dt;                                   // smooth sideways nudge
       car.x = Math.max(-2, Math.min(2, car.x));
     }
   }
@@ -65,6 +69,6 @@ function drawOpponents(ctx, opponents, cameraZ) {
     const w = Math.min(pr.w * OPP_WIDTH_FACTOR, OPP_MAX_WIDTH);
     if (w < 5) continue;
 
-    drawCarBody(ctx, pr.x, pr.y, w, opp.color);
+    drawCar3D(ctx, pr.x, pr.y, w, opp.color);
   }
 }

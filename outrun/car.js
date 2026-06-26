@@ -39,7 +39,37 @@ function updateCar(car, dt) {
 }
 
 function drawCar(ctx, screenW, screenH) {
-  drawCarBody(ctx, screenW / 2, screenH - 18, 120, '#cc2222');
+  drawCar3D(ctx, screenW / 2, screenH - 18, 120, '#cc2222');
+}
+
+// --- Pre-rendered car sprites ---------------------------------------------
+// Drawing the gradient-shaded car every frame allocated ~3 gradients per car
+// and churned the GC (hitching near traffic). Instead render each color once
+// to an offscreen canvas and blit it, scaled, each frame.
+
+const CAR_REF_W = 240;
+const _carSprites = {};
+
+function getCarSprite(color) {
+  if (_carSprites[color]) return _carSprites[color];
+  const w = CAR_REF_W, h = w * 0.6;
+  const padX = w * 0.12, padTop = h * 0.12, padBot = h * 0.22;
+  const cw = Math.ceil(w + padX * 2), ch = Math.ceil(h + padTop + padBot);
+  const off = document.createElement('canvas');
+  off.width = cw; off.height = ch;
+  const octx = off.getContext('2d');
+  const anchorX = cw / 2, anchorY = ch - padBot; // bottom-center of the car body
+  drawCarBody(octx, anchorX, anchorY, w, color);
+  const sprite = { canvas: off, anchorX, anchorY, w: cw, h: ch };
+  _carSprites[color] = sprite;
+  return sprite;
+}
+
+function drawCar3D(ctx, cx, bottomY, w, color) {
+  const sp = getCarSprite(color);
+  const scale = w / CAR_REF_W;
+  ctx.drawImage(sp.canvas, cx - sp.anchorX * scale, bottomY - sp.anchorY * scale,
+                sp.w * scale, sp.h * scale);
 }
 
 // ---- Shared 3D-ish car (rear view), centered at cx with its base at bottomY ----
