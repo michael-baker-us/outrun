@@ -54,6 +54,42 @@ body.touch #controls {
 /* When tilt steering is on, hide the left/right arrows (you steer by tilting). */
 body.tilt .pad-left { display: none; }
 
+/* Tilt feedback meter: a knob that slides with your steering input so you can
+   see at a glance whether rotating the phone is registering. */
+#tilt-meter { display: none; }
+body.tilt #tilt-meter {
+  display: block;
+  position: fixed;
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  text-align: center;
+}
+#tilt-track {
+  position: relative;
+  width: 180px;
+  height: 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+#tilt-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #8cf;
+  transform: translate(-50%, -50%);
+}
+#tilt-status {
+  margin-top: 3px;
+  font: bold 11px/1.4 monospace;
+  color: rgba(255, 255, 255, 0.7);
+}
+
 .ctl {
   width: 78px;
   height: 78px;

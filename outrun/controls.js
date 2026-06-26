@@ -34,54 +34,64 @@
   }
 
   // ---- Tilt steering --------------------------------------------------------
-  // Roll the phone like a wheel to steer. iOS 13+ needs permission requested
-  // from a tap. We calibrate a neutral angle when enabled, then feed an analog
-  // value into `tiltSteer`. Axis differs portrait vs landscape; sign/range are
-  // easy to tune below if a real device steers the wrong way or too far.
-  const TILT_RANGE = 22;   // degrees from neutral for full lock
-  const TILT_DEAD   = 2.5; // degrees of deadzone around neutral
-  const TILT_INVERT = 1;   // flip to -1 if steering is reversed on device
+  // Steer by rolling the phone left/right. Uses gravity (devicemotion) rather
+  // than tilt angles: it directly measures which way the phone leans, with no
+  // gimbal-lock, and works however you hold it. iOS 13+ needs permission from a
+  // tap, AND device sensors only fire over HTTPS (GitHub Pages is fine).
+  const TILT_FULL   = 4.2;  // m/s^2 of sideways gravity for full steering lock
+  const TILT_DEAD   = 0.45; // deadzone so a level phone doesn't drift
+  const TILT_INVERT = 1;    // set to -1 if it steers the wrong way on your phone
 
   let tiltOn = false;
   let tiltNeutral = null;
+  let knob = null, status = null;
 
-  function tiltAxis(e) {
-    // In landscape (the play orientation) the left/right roll is `beta`;
-    // in portrait it's `gamma`. Sign set per landscape direction.
-    const angle = (screen.orientation && screen.orientation.angle != null)
-      ? screen.orientation.angle
-      : (window.orientation || 0);
-    if (angle === 90)  return -e.beta;
-    if (angle === 270 || angle === -90) return e.beta;
-    if (angle === 180) return -e.gamma;
-    return e.gamma; // portrait
+  function screenAngle() {
+    if (screen.orientation && typeof screen.orientation.angle === 'number') return screen.orientation.angle;
+    if (typeof window.orientation === 'number') return (window.orientation + 360) % 360;
+    return 0;
   }
 
-  function onOrient(e) {
-    let raw = tiltAxis(e);
-    if (raw == null || Number.isNaN(raw)) return;
-    if (tiltNeutral === null) tiltNeutral = raw; // calibrate to however it's held
-    let d = raw - tiltNeutral;
-    if (Math.abs(d) < TILT_DEAD) { tiltSteer = 0; return; }
-    d -= Math.sign(d) * TILT_DEAD;
-    tiltSteer = TILT_INVERT * Math.max(-1, Math.min(1, d / TILT_RANGE));
+  function onMotion(e) {
+    const g = e.accelerationIncludingGravity;
+    if (!g || (g.x == null && g.y == null)) return;
+    const a = screenAngle();
+    // Sideways (screen left/right) gravity: device long-axis (y) in landscape,
+    // short-axis (x) in portrait.
+    let h = (a === 90 || a === 270) ? g.y : g.x;
+    if (h == null || Number.isNaN(h)) return;
+
+    if (tiltNeutral === null) tiltNeutral = h;          // calibrate to current hold
+    let d = h - tiltNeutral;
+    if (Math.abs(d) < TILT_DEAD) d = 0;
+    else d -= Math.sign(d) * TILT_DEAD;
+    tiltSteer = TILT_INVERT * Math.max(-1, Math.min(1, d / TILT_FULL));
+
+    if (knob) knob.style.left = (50 + tiltSteer * 50) + '%';
+    if (status && !status.dataset.live) { status.dataset.live = '1'; status.textContent = 'tilt: move it!'; }
   }
 
   async function enableTilt() {
     try {
-      const D = window.DeviceOrientationEvent;
-      if (D && typeof D.requestPermission === 'function') {
-        const res = await D.requestPermission(); // must be inside the tap
-        if (res !== 'granted') return false;
+      const M = window.DeviceMotionEvent;
+      if (M && typeof M.requestPermission === 'function') {
+        const res = await M.requestPermission(); // must be inside the gesture
+        if (res !== 'granted') { if (status) status.textContent = 'tilt: permission denied'; return false; }
+      } else if (!M) {
+        if (status) status.textContent = 'tilt: not supported';
+        return false;
       }
       tiltNeutral = null;
-      window.addEventListener('deviceorientation', onOrient);
+      window.addEventListener('devicemotion', onMotion);
       return true;
-    } catch (_) { return false; }
+    } catch (_) {
+      if (status) status.textContent = 'tilt: needs HTTPS';
+      return false;
+    }
   }
 
   function disableTilt() {
-    window.removeEventListener('deviceorientation', onOrient);
+    window.removeEventListener('devicemotion', onMotion);
     tiltSteer = 0;
   }
 
@@ -91,11 +101,15 @@
     bind('btn-gas',   'ArrowUp');
     bind('btn-brake', 'ArrowDown');
 
+    knob   = document.getElementById('tilt-knob');
+    status = document.getElementById('tilt-status');
+
     const tiltBtn = document.getElementById('btn-tilt');
     if (tiltBtn) {
-      tiltBtn.addEventListener('pointerdown', async (e) => {
-        e.preventDefault();
+      // 'click' is the most reliable user gesture for iOS permission prompts.
+      tiltBtn.addEventListener('click', async () => {
         if (!tiltOn) {
+          if (status) { status.textContent = 'tilt: requesting...'; delete status.dataset.live; }
           if (await enableTilt()) {
             tiltOn = true;
             document.body.classList.add('tilt');
