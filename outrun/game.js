@@ -33,6 +33,7 @@ function loop() {
   }
 
   drawRoad(ctx, segments, cameraZ, cameraX, WIDTH, HEIGHT);
+  drawScenery(ctx, segments);
   drawCar(ctx, WIDTH, HEIGHT);
   drawHUD(ctx, WIDTH, HEIGHT);
 
