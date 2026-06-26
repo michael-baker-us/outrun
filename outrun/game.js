@@ -4,10 +4,13 @@
 const WIDTH  = 800;
 const HEIGHT = 500;
 
-const START_TIME      = 60;                       // seconds on the clock
-const CHECKPOINT_TIME = 15;                       // bonus seconds per checkpoint
+const START_TIME      = 40;                       // seconds on the clock
+const CHECKPOINT_TIME = 8;                         // bonus seconds per checkpoint
 const TRACK_LEN       = NUM_SEGMENTS * SEGMENT_LENGTH;
-const CHECKPOINT_GAP  = TRACK_LEN / 4;            // distance between checkpoints
+// Checkpoints are spaced so that only good driving banks more time than it
+// costs: at top speed a gap takes ~5.5s (net +2.5s), at a sloppy pace ~10s
+// (net -2s). Independent of track length so it isn't trivially short.
+const CHECKPOINT_GAP  = 50000;                     // cumulative distance between checkpoints
 
 let canvas, ctx, segments, opponents;
 let cameraZ, distance, score, timeLeft, state, lastTime;

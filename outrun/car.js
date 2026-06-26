@@ -9,6 +9,8 @@ const CAR = {
   brake:     26000,
   decel:     7000,   // natural coast-down
   steerRate: 1.6,    // half-widths / second at full speed
+  offRoadMax:  3600,  // speed cap while on the grass (~40% of maxSpeed)
+  offRoadDrag: 16000, // extra slowdown / second while off-road
 };
 
 const keys = {};
@@ -27,6 +29,13 @@ function updateCar(car, dt) {
   if (keys['ArrowLeft'])  car.x -= steer;
   if (keys['ArrowRight']) car.x += steer;
   car.x = Math.max(-2, Math.min(2, car.x));
+
+  // Off-road: the road spans x in [-1, 1]; on the grass you scrub speed hard
+  // and can't hold a high top speed.
+  if (Math.abs(car.x) > 1) {
+    car.speed = Math.max(car.speed - car.offRoadDrag * dt, 0);
+    car.speed = Math.min(car.speed, car.offRoadMax);
+  }
 }
 
 function drawCar(ctx, screenW, screenH) {

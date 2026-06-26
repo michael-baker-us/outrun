@@ -42,15 +42,16 @@ function buildSegments() {
     if (i > 80  && i < 120) curve = -3;
     if (i > 140 && i < 170) curve =  4;
 
-    // Roadside scenery: trees with occasional billboards.
+    // Roadside scenery: trees with occasional billboards (kept sparse to
+    // avoid a crowded, shimmering treeline at the horizon).
     const sprites = [];
-    if (i % 5 === 0) {
-      const side = (i % 10 === 0) ? -1 : 1;
-      const type = (i % 20 === 0) ? 'billboard' : 'tree';
+    if (i % 8 === 0) {
+      const side = (i % 16 === 0) ? -1 : 1;
+      const type = (i % 24 === 0) ? 'billboard' : 'tree';
       sprites.push({ type, offset: side * (type === 'billboard' ? 2.2 : 2.8) });
     }
-    if (i % 7 === 0) {
-      sprites.push({ type: 'tree', offset: (i % 14 === 0 ? 1 : -1) * 3.4 });
+    if (i % 13 === 0) {
+      sprites.push({ type: 'tree', offset: (i % 26 === 0 ? 1 : -1) * 3.6 });
     }
 
     segs.push({ curve, color: Math.floor(i / STRIPE) % 2, sprites });
