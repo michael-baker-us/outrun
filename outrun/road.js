@@ -54,7 +54,8 @@ function projectObject(dz, offset) {
   const w = scale * ROAD_WIDTH * W / 2;
   const centerX = W / 2 + scale * (interpByDepth(dz, 'curveX') - _frame.playerX * ROAD_WIDTH) * W / 2;
   const y = H / 2 - scale * (interpByDepth(dz, 'elev') - _frame.cameraY) * H / 2;
-  return { x: centerX + offset * w, y, w, scale };
+  // clip = screen Y of the highest nearer terrain; sprites below it are hidden by a hill.
+  return { x: centerX + offset * w, y, w, scale, clip: interpByDepth(dz, 'clip') };
 }
 
 let _skyGrad = null;
@@ -71,7 +72,7 @@ function drawSky(ctx, screenW, screenH) {
 
 // Curve strengths (curvature added per segment while turning).
 const CURVE = { gentle: 1.5, medium: 3, hard: 4.5 };
-const HILL  = { low: 450, med: 900, high: 1400 }; // crest/dip heights in world units
+const HILL  = { low: 650, med: 1150, high: 1650 }; // crest/dip heights in world units
 
 const easeCurve = (a, b, p) => a + (b - a) * (1 - Math.cos(p * Math.PI)) / 2;
 
@@ -144,12 +145,14 @@ function buildSegments(seed) {
     i += rnd(6, 18);
   }
 
-  // Hill features: independent crests and dips, with flat gaps between them.
-  let h = rnd(12, 28);
-  while (h < NUM_SEGMENTS - 16) {
-    const mag = [HILL.low, HILL.med, HILL.high][rnd(0, 2)] * (rng() < 0.5 ? -1 : 1);
-    h = addHill(segs, h, rnd(14, 36), mag);
-    h += rnd(10, 26);
+  // Hill features: fewer but more pronounced crests/dips, with long flat gaps
+  // between them (weighted toward the bigger magnitudes).
+  let h = rnd(20, 50);
+  while (h < NUM_SEGMENTS - 18) {
+    const r = rng();
+    const mag = (r < 0.5 ? HILL.high : r < 0.8 ? HILL.med : HILL.low) * (rng() < 0.5 ? -1 : 1);
+    h = addHill(segs, h, rnd(16, 34), mag);
+    h += rnd(45, 100);
   }
 
   return segs;
@@ -222,9 +225,12 @@ function drawRoad(ctx, segments, position, playerX, screenW, screenH) {
   let dx = -(segments[baseIndex].curve * basePercent);
 
   // Pass 1: project every segment near->far, accumulating curve. Only segments
-  // behind the camera are dropped -- no occlusion cull, so the set is stable
-  // frame-to-frame (the old cull flickered far segments in and out).
+  // behind the camera are dropped -- no occlusion cull on the road itself, so
+  // the set is stable frame-to-frame (the old cull flickered far segments).
+  // `maxy` tracks the highest road silhouette so far -> the clip line that
+  // sprites use to hide behind hills (the road overdraws itself for free).
   const frameSegs = [];
+  let maxy = screenH;
   for (let n = 0; n < DRAW_DISTANCE; n++) {
     const i = (baseIndex + n) % NUM_SEGMENTS;
     const seg = segments[i];
@@ -241,8 +247,11 @@ function drawRoad(ctx, segments, position, playerX, screenW, screenH) {
 
     if (p1.camZ <= CAMERA_DEPTH) continue; // behind the camera only
 
+    const clip = maxy;                 // occlusion from nearer terrain
+    maxy = Math.min(maxy, p2.y);       // this segment's top raises the silhouette
+
     frameSegs.push({ segIdx: i, p1, p2, color: seg.color, dz: p1.camZ, curveX });
-    segmentProjections.push({ segIdx: i, dz: p1.camZ, curveX, elev: seg.y,
+    segmentProjections.push({ segIdx: i, dz: p1.camZ, curveX, elev: seg.y, clip,
                               screenY: p1.y, roadX: p1.x, roadW: p1.w, scale: p1.scale });
   }
 

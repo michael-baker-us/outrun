@@ -14,6 +14,13 @@ function drawScenery(ctx, segments) {
     if (!seg.sprites || seg.sprites.length === 0) continue;
     if (proj.roadW < SCENERY_MIN_ROADW) continue;
 
+    // Clip to the hill silhouette in front of this segment so scenery behind a
+    // crest is hidden instead of drawing through it.
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, 4096, proj.clip);
+    ctx.clip();
+
     for (const sprite of seg.sprites) {
       const screenX = proj.roadX + sprite.offset * proj.roadW;
       const baseY = proj.screenY;
@@ -26,6 +33,8 @@ function drawScenery(ctx, segments) {
         drawBillboard(ctx, screenX, baseY, roadW);
       }
     }
+
+    ctx.restore();
   }
 }
 

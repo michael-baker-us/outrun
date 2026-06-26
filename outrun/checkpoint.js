@@ -20,6 +20,12 @@ function drawCheckpoint(ctx, dz) {
   const leftX  = pr.x - 1.18 * w; // just outside each rumble strip
   const rightX = pr.x + 1.18 * w;
 
+  // Clip to the hill silhouette so a gate beyond a crest is hidden by it.
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, 4096, pr.clip);
+  ctx.clip();
+
   drawStripedPole(ctx, leftX  - poleW / 2, topY, poleW, poleH);
   drawStripedPole(ctx, rightX - poleW / 2, topY, poleW, poleH);
 
@@ -47,6 +53,8 @@ function drawCheckpoint(ctx, dz) {
     ctx.textBaseline = 'alphabetic';
     ctx.textAlign = 'left';
   }
+
+  ctx.restore();
 }
 
 function drawStripedPole(ctx, x, y, w, h) {

@@ -81,6 +81,12 @@ function drawOpponents(ctx, opponents, cameraZ) {
     const w = Math.min(pr.w * OPP_WIDTH_FACTOR, OPP_MAX_WIDTH);
     if (w < 5) continue;
 
+    // Clip to the hill silhouette so a car beyond a crest is hidden by it.
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, 4096, pr.clip);
+    ctx.clip();
     drawCar3D(ctx, pr.x, pr.y, w, opp.color);
+    ctx.restore();
   }
 }
