@@ -12,19 +12,59 @@ const CAR = {
   offRoadMax:  3000,  // speed cap while on the grass (~33% of maxSpeed, never 0)
   offRoadDrag: 22000, // bleed-down rate off-road; must exceed accel so you can't climb back up
   spinTime:  0,      // seconds left in a crash spin-out (0 = normal control)
-  spinAngle: 0,      // current sprite rotation during a spin-out
+  spinDur:   0,      // total duration of the current spin-out
+  spinAngle: 0,      // current sprite yaw during a spin-out
+  spinTotal: 0,      // total yaw to sweep over the spin
+  spinDir:   1,      // spin direction (and skid direction)
+  smoke:     [],     // tire-smoke puffs
 };
 
 // OutRun-style spin-out on crashing into traffic.
-const SPIN_DURATION      = 1.5;                       // seconds of lost control
-const SPIN_TURNS         = 3;                         // full rotations (integer -> ends facing forward)
-const SPIN_RATE          = SPIN_TURNS * 2 * Math.PI / SPIN_DURATION;
-const SPIN_DECEL         = 16000;                     // hard slowdown to near-stop while spinning
-const SPIN_TRIGGER_SPEED = 2500;                      // below this a contact just bumps, no spin
+const SPIN_TRIGGER_SPEED = 2500;   // below this a contact just bumps, no spin
+const SPIN_BASE_DURATION = 1.25;   // seconds of lost control at a light crash
+const SPIN_DECEL         = 13000;  // slide-to-a-near-stop rate
+const SPIN_SKID_RATE     = 1.2;    // sideways slide (road half-widths/sec) at spin start
 
-function startSpinOut(car) {
-  car.spinTime = SPIN_DURATION;
+// dir: which way to spin/skid (+/-1); impactSpeed scales how violent it is.
+function startSpinOut(car, dir, impactSpeed) {
+  const f = Math.min(1, Math.max(0, impactSpeed / car.maxSpeed)); // 0..1 intensity
+  car.spinDir   = dir || (Math.random() < 0.5 ? -1 : 1);
+  car.spinDur   = SPIN_BASE_DURATION + 0.7 * f;
+  car.spinTime  = car.spinDur;
+  car.spinTotal = (1.5 + 1.5 * f) * 2 * Math.PI; // 1.5 turns (light) .. 3 turns (full speed)
   car.spinAngle = 0;
+}
+
+const easeOutCubic = p => 1 - Math.pow(1 - p, 3);
+
+function spawnSmoke(car) {
+  for (let k = 0; k < 2; k++) {
+    car.smoke.push({
+      ox: Math.random() * 64 - 32, oy: Math.random() * 16 - 8,
+      age: 0, max: 0.6 + Math.random() * 0.5, r0: 7 + Math.random() * 9,
+    });
+  }
+  if (car.smoke.length > 70) car.smoke.splice(0, car.smoke.length - 70);
+}
+
+function updateSmoke(car, dt) {
+  for (const s of car.smoke) s.age += dt;
+  if (car.smoke.length) car.smoke = car.smoke.filter(s => s.age < s.max);
+}
+
+function drawSmoke(ctx, screenW, screenH) {
+  if (!CAR.smoke.length) return;
+  const bx = screenW / 2, by = screenH - 24;
+  for (const s of CAR.smoke) {
+    const p = s.age / s.max;
+    const r = s.r0 + p * 24;
+    ctx.globalAlpha = (1 - p) * 0.45;
+    ctx.fillStyle = '#d8d8d8';
+    ctx.beginPath();
+    ctx.arc(bx + s.ox, by + s.oy - p * 12, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
 }
 
 const keys = {};
@@ -35,11 +75,18 @@ function initInput() {
 }
 
 function updateCar(car, dt) {
-  // Spin-out: no control, sprite rotates, speed bleeds to almost nothing.
+  updateSmoke(car, dt);
+
+  // Spin-out: no control. The spin decelerates (fast then easing to rest), the
+  // car slides sideways, sheds speed, and kicks up tire smoke.
   if (car.spinTime > 0) {
     car.spinTime -= dt;
-    car.spinAngle += SPIN_RATE * dt;
+    const p = Math.min(1, Math.max(0, 1 - car.spinTime / car.spinDur)); // 0..1 progress
+    car.spinAngle = car.spinDir * car.spinTotal * easeOutCubic(p);       // fast, then slows
     car.speed = Math.max(0, car.speed - SPIN_DECEL * dt);
+    car.x += car.spinDir * SPIN_SKID_RATE * dt * (1 - p);                // slide, easing off
+    car.x = Math.max(-2.2, Math.min(2.2, car.x));
+    spawnSmoke(car);
     if (car.spinTime <= 0) { car.spinTime = 0; car.spinAngle = 0; }
     return;
   }
@@ -62,7 +109,11 @@ function updateCar(car, dt) {
 }
 
 function drawCar(ctx, screenW, screenH) {
-  drawCar3D(ctx, screenW / 2, screenH - 18, 120, '#cc2222', CAR.spinAngle);
+  if (CAR.spinTime > 0) {
+    drawCarSpinning(ctx, screenW / 2, screenH - 18, 120, '#cc2222', CAR.spinAngle);
+  } else {
+    drawCar3D(ctx, screenW / 2, screenH - 18, 120, '#cc2222');
+  }
 }
 
 // --- Pre-rendered car sprites ---------------------------------------------
@@ -88,23 +139,27 @@ function getCarSprite(color) {
   return sprite;
 }
 
-function drawCar3D(ctx, cx, bottomY, w, color, angle = 0) {
+function drawCar3D(ctx, cx, bottomY, w, color) {
   const sp = getCarSprite(color);
   const scale = w / CAR_REF_W;
-  const dx = cx - sp.anchorX * scale, dy = bottomY - sp.anchorY * scale;
-  const dw = sp.w * scale, dh = sp.h * scale;
+  ctx.drawImage(sp.canvas, cx - sp.anchorX * scale, bottomY - sp.anchorY * scale,
+                sp.w * scale, sp.h * scale);
+}
 
-  if (angle) {
-    const pivotY = bottomY - w * 0.30; // roughly the car's body center
-    ctx.save();
-    ctx.translate(cx, pivotY);
-    ctx.rotate(angle);
-    ctx.translate(-cx, -pivotY);
-    ctx.drawImage(sp.canvas, dx, dy, dw, dh);
-    ctx.restore();
-  } else {
-    ctx.drawImage(sp.canvas, dx, dy, dw, dh);
-  }
+// Spin-out render: yaw the car about its vertical axis (horizontal squash, so it
+// turns rear -> edge -> front -> edge -> rear without ever looking upside-down)
+// plus a lean that peaks side-on. Reads as a car spinning flat on the road.
+function drawCarSpinning(ctx, cx, bottomY, w, color, angle) {
+  const sp = getCarSprite(color);
+  const scale = w / CAR_REF_W;
+  const yaw  = Math.cos(angle);          // 1 rear .. 0 edge-on .. -1 front (mirrored)
+  const lean = 0.28 * Math.sin(angle);   // leans hardest when side-on
+  ctx.save();
+  ctx.translate(cx, bottomY);            // pivot at the car's ground contact
+  ctx.rotate(lean);
+  ctx.scale(yaw, 1);                      // squash horizontally about the centerline
+  ctx.drawImage(sp.canvas, -sp.anchorX * scale, -sp.anchorY * scale, sp.w * scale, sp.h * scale);
+  ctx.restore();
 }
 
 // ---- Shared 3D-ish car (rear view), centered at cx with its base at bottomY ----

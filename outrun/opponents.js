@@ -47,7 +47,8 @@ function checkCollisions(opponents, car, cameraZ, dt) {
     if (depth < SEGMENT_LENGTH * 1.2 && Math.abs(car.x - opp.offset) < COLLISION_HALF) {
       hit = true;
       if (car.speed > SPIN_TRIGGER_SPEED) {
-        startSpinOut(car);                                       // crash -> spin out
+        const dir = car.x < opp.offset ? -1 : 1;                 // spin away from impact
+        startSpinOut(car, dir, car.speed);                       // crash -> spin out
         return true;
       }
       // Slow contact: can't drive through, brake and ease aside.

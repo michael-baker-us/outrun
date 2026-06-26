@@ -97,6 +97,7 @@ function render() {
   drawScenery(ctx, segments);
   drawCheckpoint(ctx, nextCheckpoint - distance);
   drawOpponents(ctx, opponents, cameraZ);
+  drawSmoke(ctx, WIDTH, HEIGHT);
   drawCar(ctx, WIDTH, HEIGHT);
   drawHUD(ctx, WIDTH, HEIGHT);
 
