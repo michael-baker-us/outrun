@@ -88,6 +88,7 @@ function update(dt) {
 function render() {
   drawRoad(ctx, segments, cameraZ, CAR.x, WIDTH, HEIGHT);
   drawScenery(ctx, segments);
+  drawCheckpoint(ctx, nextCheckpoint - distance);
   drawOpponents(ctx, opponents, cameraZ);
   drawCar(ctx, WIDTH, HEIGHT);
   drawHUD(ctx, WIDTH, HEIGHT);
@@ -104,6 +105,15 @@ function drawHUD(ctx, w, h) {
   ctx.fillStyle = timeLeft < 10 ? '#ff4444' : '#ffe44d';
   ctx.textAlign = 'left';
   ctx.fillText(`TIME ${Math.ceil(timeLeft)}`, 22, 39);
+
+  // Distance to next checkpoint (under the clock)
+  const toCp = Math.max(0, Math.round((nextCheckpoint - distance) / 100));
+  ctx.font = 'bold 15px monospace';
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillRect(12, 54, 150, 24);
+  ctx.fillStyle = '#cfe8ff';
+  ctx.fillText(`NEXT CP ${toCp}m`, 22, 71);
+  ctx.font = 'bold 22px monospace';
 
   // Score (top-right)
   ctx.fillStyle = 'rgba(0,0,0,0.45)';
