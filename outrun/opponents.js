@@ -3,7 +3,7 @@
 // so they sit correctly on curves. Collision slows and nudges the player.
 
 import { SEGMENT_LENGTH, TRACK_LENGTH, DRAW_DISTANCE, projectObject, fogAlpha } from './road.js';
-import { drawCar3D, drawBrakeLights, startSpinOut, SPIN_TRIGGER_SPEED, VEHICLE_SHAPES } from './car.js';
+import { drawCar3D, drawBrakeLights, drawTailLightGlow, startSpinOut, SPIN_TRIGGER_SPEED, VEHICLE_SHAPES } from './car.js';
 
 const OPPONENT_COLORS = ['#2266cc', '#cccc22', '#22aa55', '#aa44cc', '#ee7711'];
 // sports appears twice so the majority of traffic looks like the player's car class
@@ -79,7 +79,7 @@ export function checkCollisions(opponents, car, cameraZ, dt) {
   return hit;
 }
 
-export function drawOpponents(ctx, opponents, cameraZ) {
+export function drawOpponents(ctx, opponents, cameraZ, nightFactor = 0) {
   const ordered = opponents
     .map(opp => {
       let depth = opp.z - cameraZ;
@@ -102,6 +102,7 @@ export function drawOpponents(ctx, opponents, cameraZ) {
     ctx.rect(0, 0, 4096, pr.clip);
     ctx.clip();
     drawCar3D(ctx, pr.x, pr.y, w, opp.color, opp.type);
+    if (nightFactor > 0.08) drawTailLightGlow(ctx, pr.x, pr.y, w, opp.type, nightFactor);
     if (opp.braking) drawBrakeLights(ctx, pr.x, pr.y, w, opp.type);
     ctx.restore();
   }

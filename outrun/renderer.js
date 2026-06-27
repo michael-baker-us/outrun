@@ -15,6 +15,8 @@ let _display    = null;  // the DOM canvas element
 let _displayCtx = null;  // its 2D context (only used in endFrame / resize)
 let _back       = null;  // offscreen back-buffer (always WIDTH × HEIGHT)
 let _backCtx    = null;  // context passed to all game drawing code
+let _ghost      = null;  // previous-frame copy for motion-blur ghosting
+let _ghostCtx   = null;
 
 export function initRenderer(canvasEl) {
   _display    = canvasEl;
@@ -26,12 +28,27 @@ export function initRenderer(canvasEl) {
   _back.height = HEIGHT;
   _backCtx     = _back.getContext('2d');
 
+  _ghost       = document.createElement('canvas');
+  _ghost.width  = WIDTH;
+  _ghost.height = HEIGHT;
+  _ghostCtx    = _ghost.getContext('2d');
+
   _resizeDisplay();
   window.addEventListener('resize', _resizeDisplay);
 }
 
 // The context every game module should draw on.
 export function getCtx() { return _backCtx; }
+
+// Copy the finished back-buffer into the ghost canvas so the next frame can
+// composite it at low opacity to create a motion-blur trailing-frame effect.
+// Call after render() and before the next beginFrame().
+export function captureGhost() {
+  _ghostCtx.clearRect(0, 0, WIDTH, HEIGHT);
+  _ghostCtx.drawImage(_back, 0, 0);
+}
+
+export function getGhostCanvas() { return _ghost; }
 
 // Clear the back-buffer at the start of each render pass.
 // The sky + road overdraw covers most pixels, but without a clear any region

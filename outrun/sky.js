@@ -55,6 +55,55 @@ function sampleProfile(profile, screenX, screenW, pixelShift) {
   return profile[Math.floor(u * PROFILE_LEN)];
 }
 
+// ---- Starfield: 80 fixed stars, positions randomized at module init ---------
+// Drawn on top of the sky gradient so they're visible through the dark night sky.
+const STARS = Array.from({ length: 80 }, () => ({
+  x: Math.random(),
+  y: Math.random() * 0.90,    // stay within sky area (fraction of horizonY)
+  r: 0.5 + Math.random() * 1.5,
+  b: 0.35 + Math.random() * 0.65, // per-star brightness factor
+}));
+
+function drawStarfield(ctx, W, H, nightFactor) {
+  const horizonY = H * HORIZON_FRAC;
+  ctx.save();
+  for (const s of STARS) {
+    const alpha = nightFactor * s.b;
+    ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(2)})`;
+    ctx.beginPath();
+    ctx.arc(s.x * W, s.y * horizonY, s.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ---- Moon -------------------------------------------------------------------
+function drawMoon(ctx, W, H, pixelShift, nightFactor) {
+  const horizonY = H * HORIZON_FRAC;
+  const moonX    = W * 0.22 - pixelShift * 0.30;
+  const moonY    = horizonY * 0.28;
+  const moonR    = 20;
+  const alpha    = Math.min(1, nightFactor * 1.6 - 0.15);
+  if (alpha <= 0) return;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  const glow = ctx.createRadialGradient(moonX, moonY, moonR * 0.5, moonX, moonY, moonR * 2.8);
+  glow.addColorStop(0, 'rgba(200,220,255,0.35)');
+  glow.addColorStop(1, 'rgba(180,210,255,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(moonX, moonY, moonR * 2.8, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#dce8ff';
+  ctx.beginPath();
+  ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 // ---- Sky gradient (cached) -----------------------------------------------
 let _skyGrad     = null;
 let _skyGradH    = 0;    // height the gradient was built at; rebuild if height changes
@@ -76,11 +125,17 @@ function drawSkyGradient(ctx, W, H) {
 
 // ---- Sun -----------------------------------------------------------------
 
-function drawSun(ctx, W, H) {
+function drawSun(ctx, W, H, nightFactor = 0) {
+  const fade = Math.max(0, 1 - nightFactor / 0.80);
+  if (fade <= 0) return;
+
   const horizonY = H * HORIZON_FRAC;
   const sunX = W * 0.58;
   const sunY = horizonY * 0.38;
   const sunR = 32;
+
+  ctx.save();
+  ctx.globalAlpha = fade;
 
   // Outer glow
   const glow = ctx.createRadialGradient(sunX, sunY, sunR * 0.6, sunX, sunY, sunR * 3.2);
@@ -97,6 +152,7 @@ function drawSun(ctx, W, H) {
   ctx.beginPath();
   ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
   ctx.fill();
+  ctx.restore();
 }
 
 // ---- Mountain layer -------------------------------------------------------
@@ -161,12 +217,14 @@ function drawClouds(ctx, W, H, pixelShift) {
 
 // ---- Public API ----------------------------------------------------------
 
-export function drawBackground(ctx, screenW, screenH, curveX) {
+export function drawBackground(ctx, screenW, screenH, curveX, nightFactor = 0) {
   // Negative: when road curves right (curveX > 0), background shifts left.
   const horizonPixelShift = -curveX * PARALLAX_SCALE;
 
   drawSkyGradient(ctx, screenW, screenH);
-  drawSun(ctx, screenW, screenH);
+  if (nightFactor > 0.05) drawStarfield(ctx, screenW, screenH, nightFactor);
+  drawSun(ctx, screenW, screenH, nightFactor);
+  if (nightFactor > 0.10) drawMoon(ctx, screenW, screenH, horizonPixelShift, nightFactor);
   drawClouds(ctx, screenW, screenH, horizonPixelShift);
   drawMountainLayer(ctx, screenW, screenH, FAR_PROFILE,  palette.sky.mountainFar,  0.50, horizonPixelShift * 0.25);
   drawMountainLayer(ctx, screenW, screenH, NEAR_PROFILE, palette.sky.mountainNear, 0.38, horizonPixelShift * 0.42);

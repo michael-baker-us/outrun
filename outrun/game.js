@@ -10,9 +10,12 @@ import { updateParticles, drawParticles, emitSmoke, emitDust, emitExhaust, emitS
 import { drawScenery, getLastSpriteCount } from './scenery.js';
 import { drawCheckpoint } from './checkpoint.js';
 import { buildOpponents, updateOpponents, checkCollisions, drawOpponents } from './opponents.js';
-import { initDebug, recordFrameStart, recordPhysicsStep, recordFrameEnd, drawDebugOverlay } from './debug.js';
-import { initRenderer, getCtx, beginFrame, endFrame, WIDTH, HEIGHT } from './renderer.js';
+import { initDebug, recordFrameStart, recordPhysicsStep, recordFrameEnd, drawDebugOverlay, getFPS } from './debug.js';
+import { initRenderer, getCtx, beginFrame, endFrame, captureGhost, getGhostCanvas, WIDTH, HEIGHT } from './renderer.js';
 import { palette } from './palette.js';
+import { updateTOD, setTODPhase, getTODPhase, getNightFactor, resetTOD } from './tod.js';
+import { setWeather, getWeatherMode, updateWeather, drawWeather, getGripMultiplier, resetWeather } from './weather.js';
+import { settings } from './settings.js';
 
 const START_TIME      = 40;       // seconds on the clock
 const CHECKPOINT_TIME = 8;         // bonus seconds per checkpoint
@@ -40,6 +43,16 @@ let _cameraDip = 0;      // smooth y-offset when braking, pixels
 // Vignette gradient (cached; rebuilt if canvas size changes)
 let _vigGrad = null, _vigW = 0, _vigH = 0;
 
+// Motion blur: ghost canvas reference (initialized lazily after renderer.initRenderer)
+let _ghostCanvas = null;
+
+// Film grain: small noise tile updated every 4 frames and tiled across the screen
+const GRAIN_SIZE   = 96;
+let _grainCanvas   = null, _grainCtx = null, _grainFrame = 0;
+
+// Auto-downgrade: track consecutive low-FPS frames
+let _lowFpsFrames = 0;
+
 // Speed lines: fixed angles + distances for stable streaks (no per-frame random)
 const _SL_COUNT  = 14;
 const _SL_ANGLES = Array.from({ length: _SL_COUNT }, (_, i) =>
@@ -59,35 +72,42 @@ export function resetGame() {
   nextCheckpoint = CHECKPOINT_GAP;
   flashText = '';
   flashUntil = 0;
-  CAR.x = 0;
-  CAR.speed = 0;
-  CAR.invuln = 0;
-  accumulator = 0;
-  _shakeIntensity = 0;
-  _cameraDip = 0;
+  CAR.x              = 0;
+  CAR.speed          = 0;
+  CAR.invuln         = 0;
+  CAR.gripMultiplier = 1.0;
+  accumulator        = 0;
+  _shakeIntensity    = 0;
+  _cameraDip         = 0;
+  _lowFpsFrames      = 0;
   resetParticles();
+  resetTOD();
+  resetWeather();
 }
 
 // Ordered render layers — background → foreground.
-// Phase 5 will insert post-fx passes between layers (e.g. bloom after 'traffic',
-// vignette before 'hud'). Keep the array shape stable so that's non-breaking.
 const LAYERS = [
-  // sky.js uses the previous frame's segmentProjections for parallax — imperceptible lag.
-  { name: 'sky',        draw: () => drawBackground(ctx, WIDTH, HEIGHT, getHorizonCurveX()) },
-  { name: 'road',       draw: () => drawRoad(ctx, segments, WIDTH, HEIGHT) },
-  { name: 'scenery',    draw: () => drawScenery(ctx, segments, assets) },
-  { name: 'checkpoint', draw: () => drawCheckpoint(ctx, nextCheckpoint - distance) },
-  { name: 'traffic',    draw: () => drawOpponents(ctx, opponents, cameraZ) },
-  { name: 'particles',  draw: () => drawParticles(ctx) },
-  { name: 'player',     draw: () => drawCar(ctx, WIDTH, HEIGHT) },
-  { name: 'speed-fx',   draw: () => drawSpeedFX() },
-  { name: 'hud',        draw: () => drawHUD() },
-  { name: 'gameover',   draw: () => { if (_state === 'gameover') drawGameOver(); } },
-  { name: 'debug',      draw: () => drawDebugOverlay(ctx, WIDTH, HEIGHT, {
+  { name: 'sky',         draw: () => drawBackground(ctx, WIDTH, HEIGHT, getHorizonCurveX(), getNightFactor()) },
+  { name: 'road',        draw: () => drawRoad(ctx, segments, WIDTH, HEIGHT) },
+  { name: 'lights',      draw: () => _drawNightLights() },   // headlight cones under scenery
+  { name: 'scenery',     draw: () => drawScenery(ctx, segments, assets) },
+  { name: 'checkpoint',  draw: () => drawCheckpoint(ctx, nextCheckpoint - distance) },
+  { name: 'traffic',     draw: () => drawOpponents(ctx, opponents, cameraZ, getNightFactor()) },
+  { name: 'weather-fx',  draw: () => drawWeather(ctx, WIDTH, HEIGHT) },
+  { name: 'particles',   draw: () => drawParticles(ctx) },
+  { name: 'player',      draw: () => drawCar(ctx, WIDTH, HEIGHT) },
+  { name: 'speed-fx',    draw: () => drawSpeedFX() },
+  { name: 'motion-blur', draw: () => _drawMotionBlur() },
+  { name: 'hud',         draw: () => drawHUD() },
+  { name: 'film-grain',  draw: () => _drawFilmGrain() },
+  { name: 'gameover',    draw: () => { if (_state === 'gameover') drawGameOver(); } },
+  { name: 'debug',       draw: () => drawDebugOverlay(ctx, WIDTH, HEIGHT, {
       seed: trackSeed, car: CAR,
       segmentsDrawn: segmentProjections.length,
       spritesDrawn: getLastSpriteCount(),
       particles: getParticleCount(),
+      tod: getTODPhase(),
+      weather: getWeatherMode(),
     }) },
 ];
 
@@ -121,6 +141,12 @@ export function init() {
 
   document.addEventListener('keydown', e => {
     if (_state === 'gameover' && (e.key === 'r' || e.key === 'R')) resetGame();
+    // Dev shortcuts (also work during play)
+    if (e.key === 't' || e.key === 'T') setTODPhase(getTODPhase() + 0.1);
+    if (e.key === 'w' || e.key === 'W') {
+      const modes = ['clear', 'rain'];
+      setWeather(modes[(modes.indexOf(getWeatherMode()) + 1) % modes.length]);
+    }
   });
 
   resetGame();
@@ -145,6 +171,10 @@ function loop(now) {
   }
 
   if (_state === 'playing') {
+    // TOD and weather are visual/slow — advance once per frame, not per physics step
+    updateTOD(elapsed);
+    updateWeather(elapsed);
+
     accumulator += elapsed;
     while (accumulator >= PHYSICS_STEP) {
       update(PHYSICS_STEP);
@@ -153,16 +183,19 @@ function loop(now) {
     }
     // Particle effects are visual — emit once per frame, not per physics step
     _emitAmbientParticles();
+    _checkAutoDowngrade();
   }
 
   updateParticles(elapsed);
   render(elapsed);
+  if (settings.motionBlur) captureGhost();
   recordFrameEnd(performance.now());
 
   requestAnimationFrame(loop);
 }
 
 function update(dt) {
+  CAR.gripMultiplier = getGripMultiplier();
   updateCar(CAR, dt);
   updateOpponents(opponents, dt);
 
@@ -255,6 +288,88 @@ function drawSpeedFX() {
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
+}
+
+// Player headlight cones — two radial gradients in additive blend mode.
+// Drawn after the road and before scenery so the road surface is lit.
+function _drawNightLights() {
+  const nf = getNightFactor();
+  if (nf < 0.05) return;
+
+  const cx = WIDTH / 2, by = HEIGHT - 18;
+  const alpha = nf * 0.80;
+
+  ctx.globalCompositeOperation = 'lighter';
+  for (const ox of [-26, 26]) {
+    const lx = cx + ox, ly = by - 42;
+    const g  = ctx.createRadialGradient(lx, ly, 8, lx, ly, HEIGHT * 0.78);
+    g.addColorStop(0,    `rgba(255,255,185,${Math.min(0.9, alpha * 0.65).toFixed(2)})`);
+    g.addColorStop(0.20, `rgba(255,255,175,${Math.min(0.9, alpha * 0.22).toFixed(2)})`);
+    g.addColorStop(0.55, `rgba(220,230,155,${Math.min(0.9, alpha * 0.06).toFixed(2)})`);
+    g.addColorStop(1,    'rgba(200,220,140,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+// Ghost-frame overlay for motion blur. Composites the previous rendered frame
+// at low opacity — creates a trailing smear effect at high speed.
+function _drawMotionBlur() {
+  if (!settings.motionBlur) return;
+  if (!_ghostCanvas) _ghostCanvas = getGhostCanvas();
+  const sf = CAR.speed / CAR.maxSpeed;
+  if (sf < 0.72) return;
+  const alpha = Math.pow((sf - 0.72) / 0.28, 1.5) * 0.16;
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(_ghostCanvas, 0, 0);
+  ctx.globalAlpha = 1;
+}
+
+// Tiled film-grain noise overlay. Updates a 96×96 noise canvas every 4 frames
+// then tiles it to fill the screen — 20 fps update keeps it subtle.
+function _drawFilmGrain() {
+  if (!settings.filmGrain) return;
+  if (!_grainCanvas) {
+    _grainCanvas       = document.createElement('canvas');
+    _grainCanvas.width  = GRAIN_SIZE;
+    _grainCanvas.height = GRAIN_SIZE;
+    _grainCtx          = _grainCanvas.getContext('2d');
+  }
+  _grainFrame++;
+  if (_grainFrame % 4 === 0) {
+    const img = _grainCtx.createImageData(GRAIN_SIZE, GRAIN_SIZE);
+    const d   = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const v = Math.random() * 255 | 0;
+      d[i] = d[i + 1] = d[i + 2] = v;
+      d[i + 3] = 18;
+    }
+    _grainCtx.putImageData(img, 0, 0);
+  }
+  ctx.globalAlpha = 0.55;
+  for (let y = 0; y < HEIGHT; y += GRAIN_SIZE) {
+    for (let x = 0; x < WIDTH; x += GRAIN_SIZE) {
+      ctx.drawImage(_grainCanvas, x, y);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Disable expensive effects if sustained FPS drops below 45 for ~2 s.
+// Re-enables gracefully if FPS recovers above 55.
+function _checkAutoDowngrade() {
+  if (!settings.autoDowngrade) return;
+  const fps = getFPS();
+  if (fps > 0 && fps < 45) {
+    if (++_lowFpsFrames > 120) {
+      settings.filmGrain  = false;
+      settings.motionBlur = false;
+      _lowFpsFrames       = 0;
+    }
+  } else if (fps >= 55) {
+    _lowFpsFrames = Math.max(0, _lowFpsFrames - 1);
+  }
 }
 
 // Emit ambient particle effects once per rendered frame (not per physics step).

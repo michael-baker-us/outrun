@@ -12,23 +12,24 @@ export const VEHICLE_SHAPES = {
 };
 
 export const CAR = {
-  x:          0,
-  speed:      0,
-  maxSpeed:   9000,
-  accel:      14000,
-  brake:      26000,
-  decel:      7000,
-  steerRate:  1.6,
-  offRoadMax:  3000,
-  offRoadDrag: 22000,
-  spinTime:   0,
-  spinDur:    0,
-  spinAngle:  0,
-  spinTotal:  0,
-  spinDir:    1,
-  steerInput: 0,     // -1..1, current steer direction used for body lean
-  braking:    false, // true while ArrowDown held and car is moving
-  invuln:     0,     // seconds of post-crash invulnerability remaining
+  x:              0,
+  speed:          0,
+  maxSpeed:       9000,
+  accel:          14000,
+  brake:          26000,
+  decel:          7000,
+  steerRate:      1.6,
+  offRoadMax:     3000,
+  offRoadDrag:    22000,
+  spinTime:       0,
+  spinDur:        0,
+  spinAngle:      0,
+  spinTotal:      0,
+  spinDir:        1,
+  steerInput:     0,     // -1..1, current steer direction used for body lean
+  braking:        false, // true while ArrowDown held and car is moving
+  invuln:         0,     // seconds of post-crash invulnerability remaining
+  gripMultiplier: 1.0,   // set by weather.js — reduces braking and steering in rain
 };
 
 export const SPIN_TRIGGER_SPEED = 2500;
@@ -85,11 +86,12 @@ export function updateCar(car, dt) {
                  + (tiltSteer ? Math.max(-1, Math.min(1, tiltSteer)) : 0);
   car.steerInput = Math.max(-1, Math.min(1, rawSteer));
 
+  const grip = car.gripMultiplier ?? 1;
   if (keys['ArrowUp'])  car.speed = Math.min(car.speed + car.accel * dt, car.maxSpeed);
-  else if (car.braking) car.speed = Math.max(car.speed - car.brake * dt, 0);
+  else if (car.braking) car.speed = Math.max(car.speed - car.brake * grip * dt, 0);
   else                  car.speed = Math.max(car.speed - car.decel * dt, 0);
 
-  const steer = car.steerRate * dt * (car.speed / car.maxSpeed);
+  const steer = car.steerRate * grip * dt * (car.speed / car.maxSpeed);
   if (keys['ArrowLeft'])  car.x -= steer;
   if (keys['ArrowRight']) car.x += steer;
   if (tiltSteer)          car.x += steer * tiltSteer * TILT_GAIN;
@@ -170,6 +172,30 @@ export function drawBrakeLights(ctx, cx, bottomY, w, type = 'sports') {
   ctx.fillStyle   = '#ff2020';
   ctx.beginPath(); ctx.arc(lx, ly, r, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.arc(rx, ly, r, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+// Soft additive glow around tail lights — visible at night (nightFactor > 0).
+// Uses 'lighter' composite mode; caller must be inside a save/restore if needed.
+export function drawTailLightGlow(ctx, cx, bottomY, w, type, nightFactor) {
+  if (nightFactor < 0.08) return;
+  const sh  = VEHICLE_SHAPES[type] || VEHICLE_SHAPES.sports;
+  const h   = w * sh.hFrac;
+  const ly  = bottomY - h * 0.55;
+  const lx  = cx - w * 0.36, rx = cx + w * 0.36;
+  const r   = w * 0.30;
+  const a   = (nightFactor * 0.55).toFixed(2);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const x of [lx, rx]) {
+    const g = ctx.createRadialGradient(x, ly, 0, x, ly, r);
+    g.addColorStop(0, `rgba(255,30,30,${a})`);
+    g.addColorStop(1, 'rgba(255,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, ly, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.restore();
 }
 

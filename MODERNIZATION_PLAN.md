@@ -226,23 +226,23 @@ shake + smoke; off-road kicks dust; no GC hitch near dense traffic (watch debug 
 ---
 
 ### Phase 5 — Lighting, time-of-day, weather, post-FX
-**Status:** not started
+**Status:** done
 **Goal:** Atmosphere. The marquee "modern" layer.
 
 **Why / what you learn:** color grading, additive lighting/glow, screen-space
 post effects, weather particle systems, palette interpolation.
 
-- [ ] **Time-of-day system:** interpolate sky/fog/palette across dawn→day→dusk→
+- [x] **Time-of-day system:** interpolate sky/fog/palette across dawn→day→dusk→
       night (drive from the palette module in Phase 1). Per-stage or cycling.
-- [ ] **Night mode:** dim ambient, **headlight cones** on player + traffic, glowing
+- [x] **Night mode:** dim ambient, **headlight cones** on player + traffic, glowing
       tail/brake lights (additive blend), lit billboards, starfield.
-- [ ] **Weather:** rain and/or snow particle layers; **wet-road darkening +
+- [x] **Weather:** rain and/or snow particle layers; **wet-road darkening +
       reflections/streaks**; reduced grip affecting physics (tunable). Fog density
       as a weather variable.
-- [ ] **Post-FX** on the back-buffer: bloom/glow on bright sources, vignette,
+- [x] **Post-FX** on the back-buffer: bloom/glow on bright sources, vignette,
       subtle chromatic offset or motion blur at speed, optional film grain.
       All toggleable (perf + taste) via settings.
-- [ ] Settings to enable/disable heavy effects; auto-downgrade if FPS drops below
+- [x] Settings to enable/disable heavy effects; auto-downgrade if FPS drops below
       budget (read from the debug instrumentation).
 
 **Acceptance:** convincing day↔night transition; headlights and glowing lights at
@@ -342,6 +342,8 @@ Per the user's cross-project standards — fold these in continuously, don't def
 ## 6. Progress Log
 
 > Newest first. One short entry per session: what landed, FPS/notes, what's next.
+
+- **2026-06-27 — Phase 5 complete.** New `settings.js` (motionBlur/filmGrain/bloom/weather/autoDowngrade flags). New `tod.js` (3-minute cycle, `updateTOD(dt)`, `getNightFactor()` cosine mapping, `setTODPhase()` for T-key shortcut). New `weather.js` (180 screen-space rain drops, wet-road dark sheen + perspective reflection streaks, `getGripMultiplier()=0.82` in rain, `getExtraFogDensity()`). `palette.js`: 4 stage palettes (dawn/day/dusk/night) + `_lerpH`/`_lerpR` helpers + `applyTODPalette(phase)` mutates `palette` in-place. `sky.js`: 80-star field drawn above sky gradient, moon with radial glow, sun fades at nightFactor>0.8, `drawBackground` takes optional `nightFactor`. `renderer.js`: ghost canvas + `captureGhost()`/`getGhostCanvas()` for motion blur. `car.js`: `gripMultiplier` on CAR applied to braking/steering, `drawTailLightGlow()` additive radial glow around tail lights. `opponents.js`: tail light glow at night. `debug.js`: `getFPS()` export, overlay shows `tod:` and `wx:`. `game.js`: new layers `lights` (headlight cones, 'lighter' blend), `weather-fx`, `motion-blur` (ghost composite at >72% speed), `film-grain` (96px tiled noise tile at 20fps update), `_checkAutoDowngrade()` disables grain+blur if FPS<45 for 2s. T/W keyboard shortcuts for TOD and weather. 70 tests green (11 new TOD tests, 9 new weather tests). Verified: 60 FPS / 5.1ms at max effects. Next: Phase 6 (audio, HUD, screens, persistence, stages, gamepad).
 
 - **2026-06-27 — Phase 4 complete.** New `particles.js` (pooled 200-particle system: smoke/dust/sparks/exhaust; `emitSmoke/emitDust/emitSparks/emitExhaust/updateParticles/drawParticles/resetParticles`). `car.js`: added `VEHICLE_SHAPES` (sports/sedan/compact/truck), sprite cache keyed by `${color}:${type}`, `drawBrakeLights()`, `car.steerInput/braking/invuln`, body-lean rotate on curves (2.3°), invuln blink, `INVULN_DURATION=1.8s`. `opponents.js`: 4 vehicle types, sinusoidal wobble, randomised brake-light flashing. `game.js`: `drawSpeedFX()` (radial vignette always-on + 14 animated speed lines >65% speed), screen shake (`_shakeIntensity` decays 0.86×/frame), smooth camera dip on braking, sparks+shake on crash, `_emitAmbientParticles` (smoke/dust/exhaust once/frame). Debug overlay now shows particle count and invuln. 50 tests green (4 new invuln/invuln-collision tests). Next: Phase 5 (time-of-day, night mode, weather, post-FX).
 - **2026-06-27 — Phase 3 complete.** New `assets.js` (`AssetManager` class: injectable loader, `add/load/get/getFallback/progress/ready`, graceful 404 fallback). New `sprites.js` (`buildSprites()` pre-renders pine/palm/poplar/bush/rock/billboard-0-1-2 onto offscreen canvases; `getSprite(key)` always available). `scenery.js` rewritten: bottom-center drawImage dispatch through AssetManager → procedural canvas, ground shadow ellipses per sprite, fog via `globalAlpha`. `buildSegments` sprite placement replaced with Knuth-hash deterministic variety (two-layer tree density, three billboard art variants). Loading screen with progress bar in game.js. 46 tests green (12 new AssetManager tests). Next: Phase 4 (car fidelity, particle system, speed feel).
