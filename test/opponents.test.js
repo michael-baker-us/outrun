@@ -19,7 +19,9 @@ function makeCar(overrides = {}) {
     spinAngle: 0,
     spinTotal: 0,
     spinDir: 1,
-    smoke: [],
+    steerInput: 0,
+    braking: false,
+    invuln: 0,
     ...overrides,
   };
 }
@@ -86,6 +88,11 @@ describe('checkCollisions', () => {
 
   test('already spinning: skips collision check', () => {
     const car = makeCar({ speed: 9000, spinTime: 1.0 });
+    expect(checkCollisions([closeOpp()], car, 0, 0.016)).toBe(false);
+  });
+
+  test('invuln: skips collision check during grace period', () => {
+    const car = makeCar({ speed: 9000, invuln: 1.0 });
     expect(checkCollisions([closeOpp()], car, 0, 0.016)).toBe(false);
   });
 

@@ -115,22 +115,53 @@ function addHill(segs, start, len, height) {
   return start + len;
 }
 
+// Deterministic sprite variety by segment index — avoids consuming the
+// seeded RNG so curve/hill layout is unchanged when sprite density changes.
+function _sh(i) { return (i * 2654435761 + 1234567891) >>> 0; }  // Knuth hash
+
+function _segSprites(i) {
+  const h = _sh(i);
+  const sprites = [];
+
+  // Primary layer: one sprite every 7 segments, alternating sides
+  if (i % 7 === 0) {
+    const side = (i % 14 === 0) ? -1 : 1;
+    if (i % 49 === 0) {
+      // Billboard every 49 segments
+      sprites.push({ type: `billboard-${h % 3}`, offset: side * 2.2 });
+    } else {
+      // Tree type: pine 50%, palm 25%, poplar 25%
+      const t = (h >> 4) & 7;
+      const type = t < 4 ? 'pine' : t < 6 ? 'palm' : 'poplar';
+      sprites.push({ type, offset: side * (2.6 + ((h >> 12) & 7) * 0.1) });
+    }
+  }
+
+  // Secondary layer: farther out, less frequent
+  if (i % 11 === 0) {
+    const side = (i % 22 === 0) ? 1 : -1;
+    const t = (h >> 16) & 7;
+    const type = t < 3 ? 'pine' : t < 6 ? 'palm' : 'poplar';
+    sprites.push({ type, offset: side * (3.6 + ((h >> 20) & 3) * 0.2) });
+  }
+
+  // Rocks and bushes near the roadside
+  if (i % 17 === 0 && ((h >> 24) & 3) > 0) {
+    const side = (h >> 26) & 1 ? 1 : -1;
+    const type = (h >> 22) & 1 ? 'rock' : 'bush';
+    sprites.push({ type, offset: side * (2.0 + ((h >> 18) & 3) * 0.15) });
+  }
+
+  return sprites;
+}
+
 export function buildSegments(seed) {
   const rng  = makeRng(seed >>> 0);
   const rnd  = (min, max) => min + Math.floor(rng() * (max - min + 1));
   const segs = [];
 
   for (let i = 0; i < NUM_SEGMENTS; i++) {
-    const sprites = [];
-    if (i % 8 === 0) {
-      const side = (i % 16 === 0) ? -1 : 1;
-      const type = (i % 24 === 0) ? 'billboard' : 'tree';
-      sprites.push({ type, offset: side * (type === 'billboard' ? 2.2 : 2.8) });
-    }
-    if (i % 13 === 0) {
-      sprites.push({ type: 'tree', offset: (i % 26 === 0 ? 1 : -1) * 3.6 });
-    }
-    segs.push({ curve: 0, y: 0, color: Math.floor(i / STRIPE) % 2, sprites });
+    segs.push({ curve: 0, y: 0, color: Math.floor(i / STRIPE) % 2, sprites: _segSprites(i) });
   }
 
   let i = rnd(6, 14);

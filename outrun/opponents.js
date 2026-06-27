@@ -3,16 +3,14 @@
 // so they sit correctly on curves. Collision slows and nudges the player.
 
 import { SEGMENT_LENGTH, TRACK_LENGTH, DRAW_DISTANCE, projectObject, fogAlpha } from './road.js';
-import { drawCar3D, startSpinOut, SPIN_TRIGGER_SPEED } from './car.js';
+import { drawCar3D, drawBrakeLights, startSpinOut, SPIN_TRIGGER_SPEED, VEHICLE_SHAPES } from './car.js';
 
 const OPPONENT_COLORS = ['#2266cc', '#cccc22', '#22aa55', '#aa44cc', '#ee7711'];
+// sports appears twice so the majority of traffic looks like the player's car class
+const VEHICLE_TYPES   = ['sports', 'sports', 'sedan', 'compact', 'truck'];
 
-const OPP_WIDTH_FACTOR = 0.34;   // car width as a fraction of road half-width
-const OPP_MAX_WIDTH    = 200;    // px cap so a close car never fills the screen
-
-// Collision is lateral-overlap of the two cars, measured in road half-widths
-// (the road spans [-1, 1]). Half-width of each car: opponent = factor/2,
-// player ~0.10. Their sum is how close offsets must be to actually touch.
+const OPP_WIDTH_FACTOR   = 0.34;
+const OPP_MAX_WIDTH      = 200;
 const PLAYER_HALF_OFFSET = 0.10;
 export const COLLISION_HALF = OPP_WIDTH_FACTOR / 2 + PLAYER_HALF_OFFSET; // ~0.27
 
@@ -20,11 +18,15 @@ export function buildOpponents(count) {
   const opps = [];
   for (let i = 0; i < count; i++) {
     opps.push({
-      // Spawn spread down the track but clear of the player's start zone.
-      z:      2000 + Math.random() * (TRACK_LENGTH - 4000),
-      offset: Math.random() * 1.2 - 0.6,           // lateral position, road is [-1, 1]
-      speed:  1500 + Math.random() * 2500,          // world units / second, < player top speed
-      color:  OPPONENT_COLORS[i % OPPONENT_COLORS.length],
+      z:            2000 + Math.random() * (TRACK_LENGTH - 4000),
+      offset:       Math.random() * 1.2 - 0.6,
+      speed:        1500 + Math.random() * 2500,
+      color:        OPPONENT_COLORS[i % OPPONENT_COLORS.length],
+      type:         VEHICLE_TYPES[i % VEHICLE_TYPES.length],
+      wobblePhase:  Math.random() * Math.PI * 2,
+      wobbleOffset: 0,
+      braking:      false,
+      brakingTimer: 1 + Math.random() * 3, // seconds until next brake-light toggle
     });
   }
   return opps;
@@ -34,13 +36,26 @@ export function updateOpponents(opponents, dt) {
   for (const opp of opponents) {
     opp.z += opp.speed * dt;
     if (opp.z >= TRACK_LENGTH) opp.z -= TRACK_LENGTH;
+
+    // Subtle sinusoidal drift so traffic isn't locked on rails
+    opp.wobblePhase  += dt * 0.4;
+    opp.wobbleOffset  = Math.sin(opp.wobblePhase) * 0.06;
+
+    // Randomly toggle brake lights to add visual life to traffic
+    opp.brakingTimer -= dt;
+    if (opp.brakingTimer <= 0) {
+      opp.braking      = !opp.braking;
+      opp.brakingTimer = opp.braking
+        ? (0.4 + Math.random() * 0.8)   // brake flash lasts ~0.4–1.2s
+        : (1.5 + Math.random() * 2.5);  // off period: 1.5–4s
+    }
   }
 }
 
-// Handle player/traffic contact. A fast hit triggers an OutRun-style spin-out;
-// a slow touch just brakes you toward the blocking car's speed and nudges aside.
+// Returns true if a high-speed collision triggered a spin-out.
+// Returns false if already spinning, in invuln, or no contact occurred.
 export function checkCollisions(opponents, car, cameraZ, dt) {
-  if (car.spinTime > 0) return false; // already spinning out
+  if (car.spinTime > 0 || car.invuln > 0) return false;
 
   let hit = false;
   for (const opp of opponents) {
@@ -49,11 +64,10 @@ export function checkCollisions(opponents, car, cameraZ, dt) {
     if (depth < SEGMENT_LENGTH * 1.2 && Math.abs(car.x - opp.offset) < COLLISION_HALF) {
       hit = true;
       if (car.speed > SPIN_TRIGGER_SPEED) {
-        const dir = car.x < opp.offset ? -1 : 1;                 // spin away from impact
-        startSpinOut(car, dir, car.speed);                       // crash -> spin out
+        const dir = car.x < opp.offset ? -1 : 1;
+        startSpinOut(car, dir, car.speed);
         return true;
       }
-      // Slow contact: can't drive through, brake and ease aside.
       if (car.speed > opp.speed) {
         car.speed = Math.max(opp.speed, car.speed - 40000 * dt);
       }
@@ -66,8 +80,6 @@ export function checkCollisions(opponents, car, cameraZ, dt) {
 }
 
 export function drawOpponents(ctx, opponents, cameraZ) {
-  // Draw far-to-near, projecting each car from its exact depth (continuous, so
-  // cars move smoothly instead of snapping between road segments).
   const ordered = opponents
     .map(opp => {
       let depth = opp.z - cameraZ;
@@ -78,20 +90,19 @@ export function drawOpponents(ctx, opponents, cameraZ) {
     .sort((a, b) => b.depth - a.depth);
 
   for (const { opp, depth } of ordered) {
-    const pr = projectObject(depth, opp.offset);
+    const pr = projectObject(depth, opp.offset + opp.wobbleOffset);
     if (!pr) continue;
 
     const w = Math.min(pr.w * OPP_WIDTH_FACTOR, OPP_MAX_WIDTH);
     if (w < 5) continue;
 
-    // Clip to the hill silhouette so a car beyond a crest is hidden by it.
-    // Fog fades the car with distance — at max fog it's nearly invisible.
     ctx.save();
     ctx.globalAlpha = Math.max(0.02, 1 - fogAlpha(depth));
     ctx.beginPath();
     ctx.rect(0, 0, 4096, pr.clip);
     ctx.clip();
-    drawCar3D(ctx, pr.x, pr.y, w, opp.color);
+    drawCar3D(ctx, pr.x, pr.y, w, opp.color, opp.type);
+    if (opp.braking) drawBrakeLights(ctx, pr.x, pr.y, w, opp.type);
     ctx.restore();
   }
 }

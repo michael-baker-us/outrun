@@ -1,29 +1,61 @@
-// Roadside scenery — trees and billboards positioned using the road's
-// per-segment projection cache (segmentProjections, from road.js).
-// Drawn far-to-near so nearer objects overlap farther ones.
+// Roadside scenery — draws trees, props, and billboards using the road's
+// per-segment projection cache (segmentProjections, road.js).
+//
+// Drawing strategy (per sprite):
+//   1. Ground shadow ellipse — anchors each object to the terrain.
+//   2. Sprite image: try AssetManager (real PNG if loaded), then getSprite()
+//      (pre-rendered procedural canvas from sprites.js).
+//
+// Fog is applied via globalAlpha at the segment level (same alpha for all
+// sprites in that segment), matching the road fog applied in renderSegment.
 
 import { segmentProjections, fogAlpha } from './road.js';
+import { getSprite } from './sprites.js';
 
-// Below this on-screen road half-width a segment is near the horizon, where
-// rounding makes it flicker in and out of the draw set. Skipping sprites there
-// stops the distant-tree shimmer; they fade in once they're big enough to be stable.
-const SCENERY_MIN_ROADW = 16;
+// Minimum road half-width before skipping sprites (avoids flicker at horizon)
+const SCENERY_MIN_ROADW = 18;
+
+// How wide each sprite type is, as a multiple of the road half-width.
+// Height is derived from the pre-rendered canvas aspect ratio.
+const SPRITE_WIDTHS = {
+  pine:          2.0,
+  palm:          2.4,
+  poplar:        0.9,
+  bush:          2.0,
+  rock:          2.0,
+  'billboard-0': 2.8,
+  'billboard-1': 2.8,
+  'billboard-2': 2.8,
+};
+
+// Ground shadow ellipse x-radius as a multiple of road half-width.
+const SHADOW_WX = {
+  pine:          0.90,
+  palm:          0.75,
+  poplar:        0.45,
+  bush:          1.00,
+  rock:          1.00,
+  'billboard-0': 0.70,
+  'billboard-1': 0.70,
+  'billboard-2': 0.70,
+};
 
 let _lastSpriteCount = 0;
 export function getLastSpriteCount() { return _lastSpriteCount; }
 
-export function drawScenery(ctx, segments) {
+// `assets` is the game.js AssetManager instance. May be null during init.
+export function drawScenery(ctx, segments, assets) {
   _lastSpriteCount = 0;
+
   for (let i = segmentProjections.length - 1; i >= 0; i--) {
     const proj = segmentProjections[i];
-    const seg = segments[proj.segIdx];
+    const seg  = segments[proj.segIdx];
     if (!seg.sprites || seg.sprites.length === 0) continue;
     if (proj.roadW < SCENERY_MIN_ROADW) continue;
 
-    // Clip to the hill silhouette in front of this segment so scenery behind a
-    // crest is hidden instead of drawing through it. Fog fades sprites toward the
-    // horizon haze color by reducing their opacity (the fogged road shows through).
     const fog = fogAlpha(proj.dz);
+
+    // Clip to the hill silhouette so sprites behind crests are hidden.
     ctx.save();
     ctx.globalAlpha = Math.max(0.02, 1 - fog);
     ctx.beginPath();
@@ -31,16 +63,11 @@ export function drawScenery(ctx, segments) {
     ctx.clip();
 
     for (const sprite of seg.sprites) {
-      const screenX = proj.roadX + sprite.offset * proj.roadW;
-      const baseY = proj.screenY;
-      // Size scenery relative to the road's on-screen half-width.
-      const roadW = proj.roadW;
+      const sx = proj.roadX + sprite.offset * proj.roadW;
+      const sy = proj.screenY;
 
-      if (sprite.type === 'tree') {
-        drawTree(ctx, screenX, baseY, roadW);
-      } else if (sprite.type === 'billboard') {
-        drawBillboard(ctx, screenX, baseY, roadW);
-      }
+      _drawShadow(ctx, sprite.type, sx, sy, proj.roadW);
+      _drawSprite(ctx, assets, sprite.type, sx, sy, proj.roadW);
       _lastSpriteCount++;
     }
 
@@ -48,46 +75,23 @@ export function drawScenery(ctx, segments) {
   }
 }
 
-function drawTree(ctx, x, baseY, roadW) {
-  const h = roadW * 2.2;
-  const trunkW = Math.max(2, h * 0.12);
-  const canopyR = h * 0.45;
-  if (h < 2) return;
-
-  // Trunk
-  ctx.fillStyle = '#5a3a1a';
-  ctx.fillRect(x - trunkW / 2, baseY - h * 0.45, trunkW, h * 0.45);
-
-  // Canopy (two stacked triangles)
-  ctx.fillStyle = '#0a7a25';
-  triangle(ctx, x, baseY - h, x - canopyR, baseY - h * 0.45, x + canopyR, baseY - h * 0.45);
-  ctx.fillStyle = '#0c8c2c';
-  triangle(ctx, x, baseY - h * 0.75, x - canopyR * 0.8, baseY - h * 0.3, x + canopyR * 0.8, baseY - h * 0.3);
-}
-
-function drawBillboard(ctx, x, baseY, roadW) {
-  const w = roadW * 2.0;
-  const h = w * 0.6;
-  const postW = Math.max(2, w * 0.08);
-  if (w < 3) return;
-
-  // Posts
-  ctx.fillStyle = '#444';
-  ctx.fillRect(x - w / 2 + postW, baseY - h * 0.4, postW, h * 0.4);
-  ctx.fillRect(x + w / 2 - postW * 2, baseY - h * 0.4, postW, h * 0.4);
-
-  // Board
-  ctx.fillStyle = '#f5c542';
-  ctx.fillRect(x - w / 2, baseY - h, w, h * 0.6);
-  ctx.fillStyle = '#cc2222';
-  ctx.fillRect(x - w / 2 + w * 0.1, baseY - h + h * 0.1, w * 0.8, h * 0.1);
-}
-
-function triangle(ctx, x1, y1, x2, y2, x3, y3) {
+function _drawShadow(ctx, type, x, baseY, roadW) {
+  const rx = roadW * (SHADOW_WX[type] ?? 0.85);
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
   ctx.beginPath();
-  ctx.moveTo(x1, y1);
-  ctx.lineTo(x2, y2);
-  ctx.lineTo(x3, y3);
-  ctx.closePath();
+  ctx.ellipse(x, baseY, rx, rx * 0.18, 0, 0, Math.PI * 2);
   ctx.fill();
+}
+
+function _drawSprite(ctx, assets, type, x, baseY, roadW) {
+  // Real PNG (if loaded) overrides the procedural canvas; procedural is the
+  // built-in fallback that always works without any asset files present.
+  const src = assets?.get(type) ?? getSprite(type);
+  if (!src) return;
+
+  const sw = src.naturalWidth  ?? src.width;
+  const sh = src.naturalHeight ?? src.height;
+  const w  = roadW * (SPRITE_WIDTHS[type] ?? 2.0);
+  const h  = w * sh / sw;
+  ctx.drawImage(src, x - w / 2, baseY - h, w, h);
 }

@@ -33,9 +33,13 @@ export function initRenderer(canvasEl) {
 // The context every game module should draw on.
 export function getCtx() { return _backCtx; }
 
-// Called at the start of each render pass. Currently a no-op — road.js covers
-// the entire back-buffer on every frame. Reserved for Phase 5 framebuffer work.
-export function beginFrame() {}
+// Clear the back-buffer at the start of each render pass.
+// The sky + road overdraw covers most pixels, but without a clear any region
+// that isn't painted (e.g. the strip between the sky gradient bottom and the
+// road horizon when going over hills) retains stale data from the prior frame.
+export function beginFrame() {
+  _backCtx.clearRect(0, 0, WIDTH, HEIGHT);
+}
 
 // Blit the finished back-buffer to the DPR-scaled display canvas.
 export function endFrame() {

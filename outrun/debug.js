@@ -42,15 +42,15 @@ export function recordFrameEnd(now) {
 
 export function isDebugVisible() { return _visible; }
 
-export function drawDebugOverlay(ctx, w, h, { seed, car, segmentsDrawn, spritesDrawn }) {
+export function drawDebugOverlay(ctx, w, h, { seed, car, segmentsDrawn, spritesDrawn, particles }) {
   if (!_visible) return;
 
   const lines = [
     `FPS: ${_fpsDisplay}  frame: ${_lastFrameMs.toFixed(1)}ms`,
     `physics steps/frame: ${_physicsStepsLastFrame}`,
-    `segs: ${segmentsDrawn}  sprites: ${spritesDrawn}`,
+    `segs: ${segmentsDrawn}  sprites: ${spritesDrawn}  particles: ${particles ?? 0}`,
     `seed: ${seed}`,
-    `spd: ${Math.round(car.speed)}  x: ${car.x.toFixed(2)}  spin: ${car.spinTime.toFixed(2)}`,
+    `spd: ${Math.round(car.speed)}  x: ${car.x.toFixed(2)}  spin: ${car.spinTime.toFixed(2)}  invuln: ${car.invuln?.toFixed(1) ?? 0}`,
   ];
 
   ctx.save();

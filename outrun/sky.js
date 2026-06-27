@@ -11,8 +11,10 @@ import { palette } from './palette.js';
 
 const PARALLAX_SCALE = 0.022;  // world-units → screen-pixel factor (tune here)
 
-// The horizon sits at ~46% of screen height (sky fills the top portion).
-const HORIZON_FRAC = 0.46;
+// The horizon sits at ~50% of screen height.
+// The extra 0.02 overlap past H/2 ensures the sky gradient covers the road
+// base fill seam, preventing a stale-pixel strip when driving over hills.
+const HORIZON_FRAC = 0.52;
 
 // ---- Mountain profile ----------------------------------------------------
 // Two sine-sum profiles of different spatial frequency mix, both of length
@@ -54,20 +56,22 @@ function sampleProfile(profile, screenX, screenW, pixelShift) {
 }
 
 // ---- Sky gradient (cached) -----------------------------------------------
-let _skyGrad = null;
+let _skyGrad     = null;
+let _skyGradH    = 0;    // height the gradient was built at; rebuild if height changes
 
-export function invalidateSkyGradient() { _skyGrad = null; }
+export function invalidateSkyGradient() { _skyGrad = null; _skyGradH = 0; }
 
 function drawSkyGradient(ctx, W, H) {
-  if (!_skyGrad) {
-    const horizonY = H * HORIZON_FRAC;
-    _skyGrad = ctx.createLinearGradient(0, 0, 0, horizonY);
+  const horizonY = H * HORIZON_FRAC;
+  if (!_skyGrad || _skyGradH !== H) {
+    _skyGrad  = ctx.createLinearGradient(0, 0, 0, horizonY);
     _skyGrad.addColorStop(0,    palette.sky.top);
-    _skyGrad.addColorStop(0.58, palette.sky.mid);
+    _skyGrad.addColorStop(0.52, palette.sky.mid);
     _skyGrad.addColorStop(1,    palette.sky.horizon);
+    _skyGradH = H;
   }
   ctx.fillStyle = _skyGrad;
-  ctx.fillRect(0, 0, W, H * HORIZON_FRAC);
+  ctx.fillRect(0, 0, W, horizonY);
 }
 
 // ---- Sun -----------------------------------------------------------------

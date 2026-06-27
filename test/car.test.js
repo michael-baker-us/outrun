@@ -18,7 +18,9 @@ function makeCar(overrides = {}) {
     spinAngle: 0,
     spinTotal: 0,
     spinDir: 1,
-    smoke: [],
+    steerInput: 0,
+    braking: false,
+    invuln: 0,
     ...overrides,
   };
 }
@@ -136,5 +138,26 @@ describe('spin-out', () => {
 describe('SPIN_TRIGGER_SPEED', () => {
   test('is a positive number', () => {
     expect(SPIN_TRIGGER_SPEED).toBeGreaterThan(0);
+  });
+});
+
+describe('invulnerability', () => {
+  test('invuln is set after spin-out completes', () => {
+    const car = makeCar({ speed: 5000 });
+    startSpinOut(car, 1, 5000);
+    updateCar(car, car.spinDur + 0.05); // advance past full spin duration
+    expect(car.invuln).toBeGreaterThan(0);
+  });
+
+  test('invuln decrements over time', () => {
+    const car = makeCar({ invuln: 1.0 });
+    updateCar(car, 0.1);
+    expect(car.invuln).toBeCloseTo(0.9);
+  });
+
+  test('invuln does not go below zero', () => {
+    const car = makeCar({ invuln: 0.05 });
+    updateCar(car, 0.5);
+    expect(car.invuln).toBe(0);
   });
 });

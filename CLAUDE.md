@@ -43,8 +43,11 @@ main.js
 │   ├── palette.js      (all colour constants — swappable for time-of-day)
 │   ├── sky.js     →    palette.js, road.js (getHorizonCurveX for parallax)
 │   ├── road.js    →    palette.js
-│   ├── car.js          (physics, input, car renderer)
-│   ├── scenery.js  →   road.js
+│   ├── assets.js       (AssetManager — async load, 404 fallback, progress)
+│   ├── sprites.js      (procedural sprite pre-rendering — pine/palm/rock/etc.)
+│   ├── car.js          (physics, input, car renderer, VEHICLE_SHAPES)
+│   ├── particles.js    (pooled particle system — smoke/dust/sparks/exhaust)
+│   ├── scenery.js  →   road.js, sprites.js
 │   ├── checkpoint.js → road.js
 │   ├── opponents.js →  road.js, car.js
 │   └── debug.js        (FPS overlay, backtick toggle)
@@ -70,8 +73,13 @@ No circular dependencies. `debug.js` is browser-only and never imported by tests
 | `invalidateSkyGradient()` | `sky.js` | Phase 5 palette swapper |
 | `CAR`, `keys{}` | `car.js` | `game.js`, `controls.js` |
 | `setTiltSteer(v)` | `car.js` | `controls.js` (can't assign a `let` across module boundary) |
+| `VEHICLE_SHAPES` | `car.js` | `opponents.js` (shape table for sedan/truck/etc.) |
 | `SPIN_TRIGGER_SPEED`, `startSpinOut()` | `car.js` | `opponents.js`, tests |
-| `drawCar3D()` | `car.js` | `opponents.js` |
+| `drawCar3D(ctx, cx, by, w, color, type)` | `car.js` | `opponents.js` |
+| `drawBrakeLights(ctx, cx, by, w, type)` | `car.js` | `opponents.js`, `game.js` |
+| `emitSmoke/emitDust/emitSparks/emitExhaust` | `particles.js` | `game.js` |
+| `updateParticles(dt)`, `drawParticles(ctx)` | `particles.js` | `game.js` |
+| `resetParticles()`, `getParticleCount()` | `particles.js` | `game.js` |
 | `getLastSpriteCount()` | `scenery.js` | `game.js` (debug overlay) |
 | `init()`, `resetGame()`, `getState()` | `game.js` | `main.js`, `controls.js` |
 | `initControls()` | `controls.js` | `main.js` |

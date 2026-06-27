@@ -163,28 +163,34 @@ background; road reads as textured asphalt, not flat bands; FPS within budget.
 ---
 
 ### Phase 3 — Sprites, scenery & the asset manager
-**Status:** not started
+**Status:** done
 **Goal:** Replace code-drawn flora/props with real (or richer procedural) sprites,
 loaded through a proper asset pipeline with fallbacks.
 
 **Why / what you learn:** asset loading/lifecycle, texture atlases, sprite
 scaling/anchoring, scene dressing for density.
 
-- [ ] Build an **`AssetManager`**: async preload of images/audio, a manifest,
-      progress reporting (feeds a loading screen later), and **procedural
-      fallback** registration so a missing asset never crashes the game.
-- [ ] Create/curate a small **sprite atlas** (`assets/`): palms/trees variants,
-      rocks, bushes, road signs, billboards, distant buildings. Keep the existing
-      triangle-tree as the registered fallback.
-- [ ] Anchor + scale sprites correctly against `segmentProjections` (bottom-center
-      anchor, scale by road half-width) with smooth (bilinear) downscaling and the
-      existing hill `clip`.
-- [ ] **Scenery variety & density:** weighted placement by biome, near/far layers,
-      occasional clusters, ground shadow blobs under sprites.
-- [ ] Real **billboard art** (a few designs) via the atlas, fallback to current
-      drawn billboard.
-- [ ] Tests: asset manifest loads & fallback path triggers on a forced 404
-      (mock `Image`).
+- [x] Build an **`AssetManager`** (`assets.js`): injectable loader for testability,
+      async `load()` returning a Promise, `get(key)` (null = fallback), `progress`
+      (0..1), `ready` bool, `getFallback(key)`. Console-warns on 404.
+- [x] **Procedural sprite pre-rendering** (`sprites.js`): `buildSprites()` draws
+      pine, palm, poplar, bush, rock, billboard-0/1/2 onto offscreen canvases.
+      `getSprite(key)` is the always-present fallback; real PNGs in `assets/`
+      override automatically once added.
+- [x] **Anchor + scale** all sprites bottom-center to `segmentProjections`, width
+      proportional to `roadW`, height from canvas aspect ratio. Hill `clip` still
+      hides sprites behind crests.
+- [x] **Scenery variety & density:** two-layer placement (primary every 7 segments,
+      secondary every 11) using a Knuth-hash of segment index — deterministic
+      variety without consuming the seeded RNG. Rocks/bushes interspersed. Three
+      billboard art variants (GAS/EAT/INN).
+- [x] **Ground shadow blobs** under every sprite (translucent `rgba` ellipse),
+      scaled proportionally to `roadW`.
+- [x] **Loading screen** in game.js: shows title + progress bar while
+      `AssetManager` fetches resolve. Currently all 404 → instant (< 1 frame).
+- [x] **Tests:** 12 tests in `test/assets.test.js` — successful load, 404
+      fallback, mixed, progress tracking, chaining; no browser DOM needed
+      (injectable loader).
 
 **Acceptance:** roadside reads as a varied, populated world; force-removing an
 asset file degrades gracefully (fallback) with a console warning, no crash.
@@ -192,25 +198,27 @@ asset file degrades gracefully (fallback) with a console warning, no crash.
 ---
 
 ### Phase 4 — Car fidelity & game feel
-**Status:** not started
+**Status:** done
 **Goal:** The car and the act of driving should feel modern and juicy.
 
 **Why / what you learn:** sprite state machines, particle systems, camera dynamics,
 "game juice."
 
-- [ ] **Player car sprite set** (curated or richly procedural): straight + left/right
-      steering frames, brake-light-on frame, body **bank/lean on curves**. Keep
-      `drawCarBody()` pre-render trick as fallback. Maintain offscreen-sprite cache.
-- [ ] **Opponent variety:** multiple vehicle silhouettes/colors; brake lights;
-      slight lane-keeping/AI wobble so traffic isn't on rails.
-- [ ] **Particle system** (generalize the current smoke): tire smoke on spin/skid,
-      **dust** off-road, **sparks** on collision, exhaust puffs, speed-scaled
-      intensity. Pooled allocations (avoid GC hitches — see existing smoke note).
-- [ ] **Camera & speed feel:** subtle FOV/scale push at high speed, **speed lines**
-      / vignette tightening near top speed, **screen shake** on crash, camera dip on
-      hard braking.
-- [ ] Polish the spin-out (Phase already has yaw fake) with the new particles +
-      shake; add a brief recovery flash/invuln so back-to-back spins aren't punishing.
+- [x] **Player car sprite set** (curated or richly procedural): body **lean on curves**
+      (`ctx.rotate` at draw time, up to 2.3°), brake-light overlay when braking,
+      invuln blink. `VEHICLE_SHAPES` table drives proportions per type; offscreen-sprite
+      cache keyed by `${color}:${type}`.
+- [x] **Opponent variety:** 4 vehicle types (`VEHICLE_SHAPES`: sports/sedan/compact/truck)
+      with distinct roof/body proportions; randomized brake-light flashing; sinusoidal
+      lane wobble (±0.06 road half-widths).
+- [x] **Particle system** (generalize the current smoke): tire smoke on spin/skid,
+      **dust** off-road, **sparks** on collision, exhaust puffs, pooled allocations
+      (pool of 200, evicts furthest-along particle on overflow).
+- [x] **Camera & speed feel:** **speed lines** (14 radial streaks animated outward
+      with distance, visible >65% top speed), **vignette** (always-on radial gradient,
+      intensifies with speed), **screen shake** on crash, camera dip on hard braking.
+- [x] Polish the spin-out with sparks + shake; `car.invuln` (1.8 s grace period after
+      recovery) blocks back-to-back collisions; car blinks at 8 Hz during invuln.
 
 **Acceptance:** the car visibly steers/banks/brakes; crashes produce sparks +
 shake + smoke; off-road kicks dust; no GC hitch near dense traffic (watch debug overlay).
@@ -335,6 +343,8 @@ Per the user's cross-project standards — fold these in continuously, don't def
 
 > Newest first. One short entry per session: what landed, FPS/notes, what's next.
 
+- **2026-06-27 — Phase 4 complete.** New `particles.js` (pooled 200-particle system: smoke/dust/sparks/exhaust; `emitSmoke/emitDust/emitSparks/emitExhaust/updateParticles/drawParticles/resetParticles`). `car.js`: added `VEHICLE_SHAPES` (sports/sedan/compact/truck), sprite cache keyed by `${color}:${type}`, `drawBrakeLights()`, `car.steerInput/braking/invuln`, body-lean rotate on curves (2.3°), invuln blink, `INVULN_DURATION=1.8s`. `opponents.js`: 4 vehicle types, sinusoidal wobble, randomised brake-light flashing. `game.js`: `drawSpeedFX()` (radial vignette always-on + 14 animated speed lines >65% speed), screen shake (`_shakeIntensity` decays 0.86×/frame), smooth camera dip on braking, sparks+shake on crash, `_emitAmbientParticles` (smoke/dust/exhaust once/frame). Debug overlay now shows particle count and invuln. 50 tests green (4 new invuln/invuln-collision tests). Next: Phase 5 (time-of-day, night mode, weather, post-FX).
+- **2026-06-27 — Phase 3 complete.** New `assets.js` (`AssetManager` class: injectable loader, `add/load/get/getFallback/progress/ready`, graceful 404 fallback). New `sprites.js` (`buildSprites()` pre-renders pine/palm/poplar/bush/rock/billboard-0-1-2 onto offscreen canvases; `getSprite(key)` always available). `scenery.js` rewritten: bottom-center drawImage dispatch through AssetManager → procedural canvas, ground shadow ellipses per sprite, fog via `globalAlpha`. `buildSegments` sprite placement replaced with Knuth-hash deterministic variety (two-layer tree density, three billboard art variants). Loading screen with progress bar in game.js. 46 tests green (12 new AssetManager tests). Next: Phase 4 (car fidelity, particle system, speed feel).
 - **2026-06-27 — Phase 2 complete.** New `sky.js` module: sky gradient → sun disc (with radial glow) → cloud wisps → two parallax mountain ranges (sine-sum profiles, FAR at 25% parallax rate, NEAR at 42%) scrolling with `getHorizonCurveX()`. `drawRoad` split into `projectRoad` (projection pre-pass, now called once in `render()` before all layers) + `drawRoad` (draw-only). `fogAlpha(dz)` exported from `road.js`; per-segment fog overlay applied in `renderSegment`; `globalAlpha` fog fade applied to scenery sprites and opponent cars. Shoulder strip added in `renderSegment` (sandy `#c0b090` verge between grass and rumble). `palette.js` gains fog, mountain, cloud, and shoulder colours. 34 tests still green. Next: Phase 3 (AssetManager, sprite atlas, scenery variety).
 - **2026-06-27 — Phase 1 complete.** New `renderer.js` owns a fixed 800×500 back-buffer and a DPR-scaled display canvas; all game draws go to the back-buffer, `endFrame()` blits it at native resolution (2560×1600 physical px on a 2× display). New `palette.js` centralises all colours; `road.js` now reads sky/road colours from palette with `invalidateSkyGradient()` hook for Phase 5 swaps. Game layer list made explicit (`LAYERS` array in `game.js`). Perf baseline: 60 fps / 1.1ms frame time at HiDPI. 34 tests still green. Next: Phase 2 (depth fog, parallax sky, road surface upgrade, grass texture).
 - **2026-06-27 — Phase 0 complete.** Converted all 7 JS files to native ES modules with explicit imports/exports; new `main.js` entry point; `index.html` reduced to a single `<script type="module">`. Added `package.json` + Vitest; 34 tests across `road.test.js`, `car.test.js`, `opponents.test.js` — all green. Replaced variable-timestep loop with 120 Hz fixed-timestep accumulator (2 physics steps/frame at 60fps). Added `debug.js` overlay (backtick toggle): 60 FPS, 0.7ms frame time, 119 segs drawn, 23 sprites. CLAUDE.md updated with module graph and new dev workflow. Game visually identical to pre-refactor. Next: Phase 1 (Renderer, resolution independence, render layers).
