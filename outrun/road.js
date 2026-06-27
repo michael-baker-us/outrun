@@ -2,13 +2,13 @@
 // Each segment is projected near→far; the road is drawn as quads between
 // successive projected points, with curve accumulated across the draw distance.
 
-const SEGMENT_LENGTH = 200;
-const NUM_SEGMENTS   = 500;  // longer track -> more variety before it repeats
+export const SEGMENT_LENGTH = 200;
+export const NUM_SEGMENTS   = 500;  // longer track -> more variety before it repeats
 const CAMERA_HEIGHT  = 1000;
 const CAMERA_DEPTH   = 0.84;  // ~1/tan(FOV/2)
 const ROAD_WIDTH     = 2000;  // world half-width of the road
-const DRAW_DISTANCE  = 120;   // segments drawn per frame
-const TRACK_LENGTH   = NUM_SEGMENTS * SEGMENT_LENGTH;
+export const DRAW_DISTANCE  = 120;   // segments drawn per frame
+export const TRACK_LENGTH   = NUM_SEGMENTS * SEGMENT_LENGTH;
 
 const STRIPE = 3; // segments per alternating color block (coarser = scrolls, doesn't strobe)
 
@@ -24,7 +24,7 @@ const COLORS = {
 // Per-frame projection cache for visible segments, in near->far order (ascending dz).
 // Each entry: { segIdx, dz, curveX, screenY, roadX, roadW, scale }.
 // curveX is the road centerline's world-x at that segment (for following curves).
-const segmentProjections = [];
+export const segmentProjections = [];
 
 // Frame context captured by drawRoad so projectObject() can place sprites/cars.
 const _frame = { W: 0, H: 0, playerX: 0, cameraY: CAMERA_HEIGHT };
@@ -47,7 +47,7 @@ function interpByDepth(dz, field) {
 // Project an object (car/sprite) from its exact camera depth `dz` and lateral
 // `offset` (in road half-widths). Continuous in dz -> no segment-snapping stutter.
 // Rides the road's curve and elevation at that depth.
-function projectObject(dz, offset) {
+export function projectObject(dz, offset) {
   if (dz <= CAMERA_DEPTH) return null;
   const scale = CAMERA_DEPTH / dz;
   const W = _frame.W, H = _frame.H;
@@ -77,7 +77,7 @@ const HILL  = { low: 650, med: 1150, high: 1650 }; // crest/dip heights in world
 const easeCurve = (a, b, p) => a + (b - a) * (1 - Math.cos(p * Math.PI)) / 2;
 
 // Mulberry32 seeded PRNG -> deterministic tracks from a seed.
-function makeRng(seed) {
+export function makeRng(seed) {
   let s = seed >>> 0;
   return function () {
     s = (s + 0x6D2B79F5) | 0;
@@ -106,7 +106,7 @@ function addHill(segs, start, len, height) {
   return start + len;
 }
 
-function buildSegments(seed) {
+export function buildSegments(seed) {
   const rng  = makeRng(seed >>> 0);
   const rnd  = (min, max) => min + Math.floor(rng() * (max - min + 1));
   const segs = [];
@@ -203,7 +203,7 @@ function renderSegment(ctx, screenW, p1, p2, color) {
   }
 }
 
-function drawRoad(ctx, segments, position, playerX, screenW, screenH) {
+export function drawRoad(ctx, segments, position, playerX, screenW, screenH) {
   drawSky(ctx, screenW, screenH);
   // Base grass fill for the lower half so there are no seams behind the road.
   ctx.fillStyle = COLORS.grass[0];

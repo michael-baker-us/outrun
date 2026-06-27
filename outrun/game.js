@@ -1,22 +1,50 @@
 // Main game loop — wires road, scenery, opponents, car, and HUD together,
 // plus the timer / score / checkpoint / game-over state machine.
 
+import { buildSegments, drawRoad, TRACK_LENGTH, NUM_SEGMENTS, SEGMENT_LENGTH, segmentProjections } from './road.js';
+import { CAR, initInput, updateCar, drawCar, drawSmoke } from './car.js';
+import { drawScenery, getLastSpriteCount } from './scenery.js';
+import { drawCheckpoint } from './checkpoint.js';
+import { buildOpponents, updateOpponents, checkCollisions, drawOpponents } from './opponents.js';
+import { initDebug, recordFrameStart, recordPhysicsStep, recordFrameEnd, drawDebugOverlay } from './debug.js';
+
 const WIDTH  = 800;
 const HEIGHT = 500;
 
-const START_TIME      = 40;                       // seconds on the clock
-const CHECKPOINT_TIME = 8;                         // bonus seconds per checkpoint
-const TRACK_LEN       = NUM_SEGMENTS * SEGMENT_LENGTH;
+const START_TIME      = 40;       // seconds on the clock
+const CHECKPOINT_TIME = 8;         // bonus seconds per checkpoint
 // Checkpoints are spaced so that only good driving banks more time than it
 // costs: at top speed a gap takes ~5.5s (net +2.5s), at a sloppy pace ~10s
 // (net -2s). Independent of track length so it isn't trivially short.
-const CHECKPOINT_GAP  = 50000;                     // cumulative distance between checkpoints
+const CHECKPOINT_GAP  = 50000;    // cumulative distance between checkpoints
+
+// Fixed physics timestep: decouples simulation speed from frame rate so
+// physics is identical at 30fps, 60fps, and 144fps.
+const PHYSICS_STEP = 1 / 120;
 
 let canvas, ctx, segments, opponents, trackSeed;
-let cameraZ, distance, score, timeLeft, state, lastTime;
+let cameraZ, distance, score, timeLeft, lastTime;
 let nextCheckpoint, flashText, flashUntil;
+let accumulator = 0;
 
-function init() {
+let _state = 'playing';
+export function getState() { return _state; }
+
+export function resetGame() {
+  cameraZ = 0;
+  distance = 0;
+  score = 0;
+  timeLeft = START_TIME;
+  _state = 'playing';
+  nextCheckpoint = CHECKPOINT_GAP;
+  flashText = '';
+  flashUntil = 0;
+  CAR.x = 0;
+  CAR.speed = 0;
+  accumulator = 0;
+}
+
+export function init() {
   canvas = document.getElementById('game');
   canvas.width  = WIDTH;
   canvas.height = HEIGHT;
@@ -32,8 +60,10 @@ function init() {
   segments = buildSegments(trackSeed);
   opponents = buildOpponents(16);
   initInput();
-  window.addEventListener('keydown', e => {
-    if (state === 'gameover' && (e.key === 'r' || e.key === 'R')) resetGame();
+  initDebug();
+
+  document.addEventListener('keydown', e => {
+    if (_state === 'gameover' && (e.key === 'r' || e.key === 'R')) resetGame();
   });
 
   resetGame();
@@ -41,25 +71,23 @@ function init() {
   requestAnimationFrame(loop);
 }
 
-function resetGame() {
-  cameraZ = 0;
-  distance = 0;
-  score = 0;
-  timeLeft = START_TIME;
-  state = 'playing';
-  nextCheckpoint = CHECKPOINT_GAP;
-  flashText = '';
-  flashUntil = 0;
-  CAR.x = 0;
-  CAR.speed = 0;
-}
-
 function loop(now) {
-  const dt = Math.min((now - lastTime) / 1000, 0.05); // clamp to avoid huge jumps
+  recordFrameStart(now);
+
+  const elapsed = Math.min((now - lastTime) / 1000, 0.05);
   lastTime = now;
 
-  if (state === 'playing') update(dt);
+  if (_state === 'playing') {
+    accumulator += elapsed;
+    while (accumulator >= PHYSICS_STEP) {
+      update(PHYSICS_STEP);
+      accumulator -= PHYSICS_STEP;
+      recordPhysicsStep();
+    }
+  }
+
   render();
+  recordFrameEnd(performance.now());
 
   requestAnimationFrame(loop);
 }
@@ -69,7 +97,7 @@ function update(dt) {
   updateOpponents(opponents, dt);
 
   cameraZ += CAR.speed * dt;
-  if (cameraZ >= TRACK_LEN) cameraZ -= TRACK_LEN;
+  if (cameraZ >= TRACK_LENGTH) cameraZ -= TRACK_LENGTH;
 
   distance += CAR.speed * dt;
   score = Math.floor(distance / 100);
@@ -88,7 +116,7 @@ function update(dt) {
   timeLeft -= dt;
   if (timeLeft <= 0) {
     timeLeft = 0;
-    state = 'gameover';
+    _state = 'gameover';
   }
 }
 
@@ -101,7 +129,14 @@ function render() {
   drawCar(ctx, WIDTH, HEIGHT);
   drawHUD(ctx, WIDTH, HEIGHT);
 
-  if (state === 'gameover') drawGameOver(ctx, WIDTH, HEIGHT);
+  if (_state === 'gameover') drawGameOver(ctx, WIDTH, HEIGHT);
+
+  drawDebugOverlay(ctx, WIDTH, HEIGHT, {
+    seed: trackSeed,
+    car: CAR,
+    segmentsDrawn: segmentProjections.length,
+    spritesDrawn: getLastSpriteCount(),
+  });
 }
 
 function drawHUD(ctx, w, h) {
@@ -173,5 +208,3 @@ function drawGameOver(ctx, w, h) {
   ctx.fillText('Press R to restart', w / 2, h / 2 + 64);
   ctx.textAlign = 'left';
 }
-
-window.addEventListener('load', init);

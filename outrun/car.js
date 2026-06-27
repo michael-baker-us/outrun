@@ -1,7 +1,7 @@
 // Player car: dt-based physics, input handling, and a shared 3D-ish car
 // renderer (drawCarBody) used for both the player and opponent traffic.
 
-const CAR = {
+export const CAR = {
   x:         0,      // lateral position in road half-widths (-1..1 = on road)
   speed:     0,      // forward speed in world units / second
   maxSpeed:  9000,
@@ -20,13 +20,13 @@ const CAR = {
 };
 
 // OutRun-style spin-out on crashing into traffic.
-const SPIN_TRIGGER_SPEED = 2500;   // below this a contact just bumps, no spin
+export const SPIN_TRIGGER_SPEED = 2500;   // below this a contact just bumps, no spin
 const SPIN_BASE_DURATION = 1.25;   // seconds of lost control at a light crash
 const SPIN_DECEL         = 13000;  // slide-to-a-near-stop rate
 const SPIN_SKID_RATE     = 1.2;    // sideways slide (road half-widths/sec) at spin start
 
 // dir: which way to spin/skid (+/-1); impactSpeed scales how violent it is.
-function startSpinOut(car, dir, impactSpeed) {
+export function startSpinOut(car, dir, impactSpeed) {
   const f = Math.min(1, Math.max(0, impactSpeed / car.maxSpeed)); // 0..1 intensity
   car.spinDir   = dir || (Math.random() < 0.5 ? -1 : 1);
   car.spinDur   = SPIN_BASE_DURATION + 0.7 * f;
@@ -52,7 +52,7 @@ function updateSmoke(car, dt) {
   if (car.smoke.length) car.smoke = car.smoke.filter(s => s.age < s.max);
 }
 
-function drawSmoke(ctx, screenW, screenH) {
+export function drawSmoke(ctx, screenW, screenH) {
   if (!CAR.smoke.length) return;
   const bx = screenW / 2, by = screenH - 24;
   for (const s of CAR.smoke) {
@@ -67,16 +67,18 @@ function drawSmoke(ctx, screenW, screenH) {
   ctx.globalAlpha = 1;
 }
 
-const keys = {};
+export const keys = {};
 let tiltSteer = 0;          // analog steering from device tilt (-1..1), set by controls.js
 const TILT_GAIN = 1.4;      // how strongly full tilt steers vs a held key
 
-function initInput() {
-  window.addEventListener('keydown', e => keys[e.key] = true);
-  window.addEventListener('keyup',   e => keys[e.key] = false);
+export function setTiltSteer(v) { tiltSteer = v; }
+
+export function initInput() {
+  window.addEventListener('keydown', e => { keys[e.key] = true; });
+  window.addEventListener('keyup',   e => { keys[e.key] = false; });
 }
 
-function updateCar(car, dt) {
+export function updateCar(car, dt) {
   updateSmoke(car, dt);
 
   // Spin-out: no control. The spin decelerates (fast then easing to rest), the
@@ -111,7 +113,7 @@ function updateCar(car, dt) {
   }
 }
 
-function drawCar(ctx, screenW, screenH) {
+export function drawCar(ctx, screenW, screenH) {
   if (CAR.spinTime > 0) {
     drawCarSpinning(ctx, screenW / 2, screenH - 18, 120, '#cc2222', CAR.spinAngle);
   } else {
@@ -142,7 +144,7 @@ function getCarSprite(color) {
   return sprite;
 }
 
-function drawCar3D(ctx, cx, bottomY, w, color) {
+export function drawCar3D(ctx, cx, bottomY, w, color) {
   const sp = getCarSprite(color);
   const scale = w / CAR_REF_W;
   ctx.drawImage(sp.canvas, cx - sp.anchorX * scale, bottomY - sp.anchorY * scale,

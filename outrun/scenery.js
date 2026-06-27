@@ -2,12 +2,18 @@
 // per-segment projection cache (segmentProjections, from road.js).
 // Drawn far-to-near so nearer objects overlap farther ones.
 
+import { segmentProjections } from './road.js';
+
 // Below this on-screen road half-width a segment is near the horizon, where
 // rounding makes it flicker in and out of the draw set. Skipping sprites there
 // stops the distant-tree shimmer; they fade in once they're big enough to be stable.
 const SCENERY_MIN_ROADW = 16;
 
-function drawScenery(ctx, segments) {
+let _lastSpriteCount = 0;
+export function getLastSpriteCount() { return _lastSpriteCount; }
+
+export function drawScenery(ctx, segments) {
+  _lastSpriteCount = 0;
   for (let i = segmentProjections.length - 1; i >= 0; i--) {
     const proj = segmentProjections[i];
     const seg = segments[proj.segIdx];
@@ -32,6 +38,7 @@ function drawScenery(ctx, segments) {
       } else if (sprite.type === 'billboard') {
         drawBillboard(ctx, screenX, baseY, roadW);
       }
+      _lastSpriteCount++;
     }
 
     ctx.restore();

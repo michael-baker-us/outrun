@@ -2,8 +2,10 @@
 // Positioned with the same per-segment projection cache the road uses,
 // so they sit correctly on curves. Collision slows and nudges the player.
 
+import { SEGMENT_LENGTH, TRACK_LENGTH, DRAW_DISTANCE, projectObject } from './road.js';
+import { drawCar3D, startSpinOut, SPIN_TRIGGER_SPEED } from './car.js';
+
 const OPPONENT_COLORS = ['#2266cc', '#cccc22', '#22aa55', '#aa44cc', '#ee7711'];
-// TRACK_LENGTH is defined in road.js.
 
 const OPP_WIDTH_FACTOR = 0.34;   // car width as a fraction of road half-width
 const OPP_MAX_WIDTH    = 200;    // px cap so a close car never fills the screen
@@ -12,9 +14,9 @@ const OPP_MAX_WIDTH    = 200;    // px cap so a close car never fills the screen
 // (the road spans [-1, 1]). Half-width of each car: opponent = factor/2,
 // player ~0.10. Their sum is how close offsets must be to actually touch.
 const PLAYER_HALF_OFFSET = 0.10;
-const COLLISION_HALF     = OPP_WIDTH_FACTOR / 2 + PLAYER_HALF_OFFSET; // ~0.27
+export const COLLISION_HALF = OPP_WIDTH_FACTOR / 2 + PLAYER_HALF_OFFSET; // ~0.27
 
-function buildOpponents(count) {
+export function buildOpponents(count) {
   const opps = [];
   for (let i = 0; i < count; i++) {
     opps.push({
@@ -28,7 +30,7 @@ function buildOpponents(count) {
   return opps;
 }
 
-function updateOpponents(opponents, dt) {
+export function updateOpponents(opponents, dt) {
   for (const opp of opponents) {
     opp.z += opp.speed * dt;
     if (opp.z >= TRACK_LENGTH) opp.z -= TRACK_LENGTH;
@@ -37,7 +39,7 @@ function updateOpponents(opponents, dt) {
 
 // Handle player/traffic contact. A fast hit triggers an OutRun-style spin-out;
 // a slow touch just brakes you toward the blocking car's speed and nudges aside.
-function checkCollisions(opponents, car, cameraZ, dt) {
+export function checkCollisions(opponents, car, cameraZ, dt) {
   if (car.spinTime > 0) return false; // already spinning out
 
   let hit = false;
@@ -63,7 +65,7 @@ function checkCollisions(opponents, car, cameraZ, dt) {
   return hit;
 }
 
-function drawOpponents(ctx, opponents, cameraZ) {
+export function drawOpponents(ctx, opponents, cameraZ) {
   // Draw far-to-near, projecting each car from its exact depth (continuous, so
   // cars move smoothly instead of snapping between road segments).
   const ordered = opponents

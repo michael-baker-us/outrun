@@ -77,31 +77,32 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 ---
 
 ### Phase 0 — Foundation: modules, tests, loop, instrumentation
-**Status:** not started
+**Status:** done
 **Goal:** Re-platform the codebase so the rest of the work is safe and testable.
 This is plumbing — the game should look *identical* when Phase 0 ends.
 
 **Why / what you learn:** module boundaries, dependency graphs, fixed-timestep
 game loops, headless testing of game logic, basic profiling.
 
-- [ ] Convert each file to an ES module with explicit `export`/`import`. Remove
+- [x] Convert each file to an ES module with explicit `export`/`import`. Remove
       reliance on global script-load order. Update `index.html` to a single
       `<script type="module" src="main.js">` entry that wires everything.
-- [ ] Document the new module graph in `CLAUDE.md` (replace the "shared globals"
+- [x] Document the new module graph in `CLAUDE.md` (replace the "shared globals"
       table with an import map).
-- [ ] Add `package.json` (dev-only) + Vitest. Add `npm test`. No runtime deps.
-- [ ] Extract pure logic into testable units and add first tests:
+- [x] Add `package.json` (dev-only) + Vitest. Add `npm test`. No runtime deps.
+- [x] Extract pure logic into testable units and add first tests:
       - `buildSegments(seed)` is deterministic for a seed (snapshot a few fields).
       - `makeRng` Mulberry32 sequence is stable.
       - collision overlap math (`COLLISION_HALF`) given fixtures.
       - off-road speed-bleed and spin-out timing in `updateCar` (inject `dt`).
-- [ ] Replace the variable-timestep loop with a **fixed-timestep accumulator**
-      (e.g. 120 Hz physics) + interpolated render. Kills speed-dependent physics
+- [x] Replace the variable-timestep loop with a **fixed-timestep accumulator**
+      (120 Hz physics) + render once per rAF. Kills speed-dependent physics
       drift and makes behavior reproducible.
-- [ ] Add a dev **debug overlay** (toggle with `~`/backtick): FPS, frame ms,
+- [x] Add a dev **debug overlay** (toggle with backtick): FPS, frame ms,
       physics steps/frame, draw-call-ish counts (segments drawn, sprites drawn),
       current seed, car state. Hidden by default; `?debug=1` to force on.
-- [ ] Add a tiny `dev.md` (or README section): how to serve, run tests, toggle debug.
+- [x] Add a tiny `dev.md` (or README section): how to serve, run tests, toggle debug.
+      (folded into CLAUDE.md — Running the Game / Running Tests sections)
 
 **Acceptance:** `npm test` green; game looks/plays identically; debug overlay
 reports stable FPS; physics no longer varies with framerate.
@@ -333,4 +334,4 @@ Per the user's cross-project standards — fold these in continuously, don't def
 
 > Newest first. One short entry per session: what landed, FPS/notes, what's next.
 
-- _(empty — first executing session appends here)_
+- **2026-06-27 — Phase 0 complete.** Converted all 7 JS files to native ES modules with explicit imports/exports; new `main.js` entry point; `index.html` reduced to a single `<script type="module">`. Added `package.json` + Vitest; 34 tests across `road.test.js`, `car.test.js`, `opponents.test.js` — all green. Replaced variable-timestep loop with 120 Hz fixed-timestep accumulator (2 physics steps/frame at 60fps). Added `debug.js` overlay (backtick toggle): 60 FPS, 0.7ms frame time, 119 segs drawn, 23 sprites. CLAUDE.md updated with module graph and new dev workflow. Game visually identical to pre-refactor. Next: Phase 1 (Renderer, resolution independence, render layers).

@@ -4,42 +4,82 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Running the Game
 
-No build step, no dependencies, no package manager. Open `outrun/index.html` directly in a browser:
+The game uses native ES modules, so it **must be served over HTTP** — `file://` URLs won't work.
 
-```
-open outrun/index.html
+```bash
+# Serve and open:
+python3 -m http.server 8000 --directory outrun
+open http://localhost:8000
+
+# Or with npx:
+npx serve outrun
 ```
 
-For mobile/tilt features, the page must be served over HTTPS (e.g. GitHub Pages), since `DeviceMotionEvent` is blocked on plain `file://` in iOS Safari.
+For mobile/tilt features the page must also be served over **HTTPS** (e.g. GitHub Pages), since `DeviceMotionEvent` is blocked on plain HTTP in iOS Safari.
 
 Replay a specific track layout by appending `?seed=<n>` to the URL. The current seed is printed to the console on each load and rendered in the bottom-left corner of the canvas.
 
+Toggle the **debug overlay** with the backtick key `` ` ``, or force it on with `?debug=1`. It shows FPS, frame ms, physics steps/frame, segment and sprite counts, and live car state.
+
+## Running Tests
+
+```bash
+npm test          # run once
+npm run test:watch  # watch mode
+```
+
+Tests are in `test/` and cover pure game logic (road generation, car physics, collision detection). No browser required — Vitest runs them in Node.
+
 ## Architecture
 
-The game is vanilla JS with no ES modules — every file is a plain `<script>` tag that appends to a shared global scope. **Script load order in `index.html` is the dependency order:**
+The game is vanilla JS with **native ES modules** (`<script type="module">`). Entry point is `outrun/main.js`; all other files use explicit `import`/`export`.
 
-1. `road.js` — road geometry, projection math, scenery segment data
-2. `scenery.js` — reads `segmentProjections` from road.js to draw trees/billboards
-3. `checkpoint.js` — draws the overhead gate using `projectObject()` from road.js
-4. `opponents.js` — collision logic, draws traffic using `projectObject()` and `drawCar3D()`
-5. `car.js` — player physics, spin-out state, shared `drawCar3D()` / `drawCarBody()` renderer
-6. `game.js` — main loop, HUD, game state machine (`'playing'` | `'gameover'`)
-7. `controls.js` — pointer/touch event bindings + tilt steering via `DeviceMotionEvent`
+### Module graph
 
-### Shared globals (the module interface)
+```
+main.js
+├── game.js
+│   ├── road.js         (geometry, projection, track gen)
+│   ├── car.js          (physics, input, car renderer)
+│   ├── scenery.js  →   road.js
+│   ├── checkpoint.js → road.js
+│   ├── opponents.js →  road.js, car.js
+│   └── debug.js        (FPS overlay, backtick toggle)
+└── controls.js →       car.js, game.js
+```
 
-| Symbol | Defined in | Read by |
+No circular dependencies. `debug.js` is browser-only and never imported by tests.
+
+### Key exports
+
+| Symbol | Module | Used by |
 |---|---|---|
-| `segmentProjections[]` | `road.js` (rebuilt each frame by `drawRoad`) | `scenery.js`, `checkpoint.js`, `opponents.js` |
+| `segmentProjections[]` | `road.js` | `scenery.js` (exported array ref — mutations visible to all holders) |
 | `projectObject(dz, offset)` | `road.js` | `checkpoint.js`, `opponents.js` |
-| `SEGMENT_LENGTH`, `NUM_SEGMENTS`, `TRACK_LENGTH` | `road.js` | `game.js`, `opponents.js` |
-| `DRAW_DISTANCE` | `road.js` | `opponents.js` |
-| `CAR` | `car.js` | `game.js`, `controls.js` |
-| `keys{}` | `car.js` | `controls.js` |
-| `tiltSteer` | `car.js` | `controls.js` (writes it) |
-| `drawCar3D()`, `drawCarBody()` | `car.js` | `opponents.js` |
-| `startSpinOut()`, `SPIN_TRIGGER_SPEED` | `car.js` | `opponents.js` |
-| `state`, `resetGame()` | `game.js` | `controls.js` |
+| `SEGMENT_LENGTH`, `NUM_SEGMENTS`, `TRACK_LENGTH`, `DRAW_DISTANCE` | `road.js` | `game.js`, `opponents.js` |
+| `makeRng(seed)` | `road.js` | tests |
+| `buildSegments(seed)` | `road.js` | `game.js`, tests |
+| `CAR`, `keys{}` | `car.js` | `game.js`, `controls.js` |
+| `setTiltSteer(v)` | `car.js` | `controls.js` (can't assign a `let` across module boundary) |
+| `SPIN_TRIGGER_SPEED`, `startSpinOut()` | `car.js` | `opponents.js`, tests |
+| `drawCar3D()` | `car.js` | `opponents.js` |
+| `getLastSpriteCount()` | `scenery.js` | `game.js` (debug overlay) |
+| `init()`, `resetGame()`, `getState()` | `game.js` | `main.js`, `controls.js` |
+| `initControls()` | `controls.js` | `main.js` |
+
+### Physics loop (fixed timestep)
+
+`game.js` runs a **120 Hz fixed-timestep accumulator** so physics is frame-rate independent:
+
+```
+loop(now):
+  elapsed = min((now - lastTime) / 1000, 0.05)
+  accumulator += elapsed
+  while accumulator >= 1/120:
+    update(1/120)        // physics + collision + timer
+    accumulator -= 1/120
+  render()               // always once per rAF
+```
 
 ### Rendering pipeline (per frame)
 
@@ -52,6 +92,7 @@ The game is vanilla JS with no ES modules — every file is a plain `<script>` t
 5. `drawSmoke()` — tire-smoke particles above the player car.
 6. `drawCar()` — player car sprite at the bottom-center of the canvas.
 7. `drawHUD()` — time, score, speed, seed overlay.
+8. `drawDebugOverlay()` — dev stats (hidden unless toggled).
 
 ### Pseudo-3D projection
 
@@ -63,7 +104,7 @@ Hill occlusion uses the `clip` field in each `segmentProjections` entry — the 
 
 ### Track generation
 
-`buildSegments(seed)` in `road.js` uses a Mulberry32 seeded PRNG to place `addCurve()` and `addHill()` features procedurally. Each segment stores `{ curve, y, color, sprites[] }`. The color field alternates every `STRIPE` segments to produce the scrolling road stripe effect without strobing.
+`buildSegments(seed)` in `road.js` uses a Mulberry32 seeded PRNG (`makeRng`) to place `addCurve()` and `addHill()` features procedurally. Each segment stores `{ curve, y, color, sprites[] }`. The color field alternates every `STRIPE` segments to produce the scrolling road stripe effect without strobing.
 
 ### Car rendering
 
@@ -71,4 +112,4 @@ Hill occlusion uses the `clip` field in each `segmentProjections` entry — the 
 
 ### Mobile / tilt controls
 
-`controls.js` is an IIFE that adds `touch` or `tilt` CSS classes to `<body>` to show/hide the on-screen buttons and tilt meter. It bridges pointer events to the same `keys{}` object the keyboard uses, so `updateCar()` in `car.js` is unchanged. Tilt reads `DeviceMotionEvent.accelerationIncludingGravity`, remapped per `screen.orientation.angle` to handle all four landscape/portrait orientations.
+`controls.js` exports `initControls()`, called from `main.js` on window load. It adds `touch` or `tilt` CSS classes to `<body>` to show/hide the on-screen buttons and tilt meter. It bridges pointer events to the same `keys{}` object the keyboard uses, so `updateCar()` in `car.js` is unchanged. Tilt reads `DeviceMotionEvent.accelerationIncludingGravity`, remapped per `screen.orientation.angle` to handle all four landscape/portrait orientations.
