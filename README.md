@@ -19,6 +19,6 @@ A pseudo-3D arcade racer built with vanilla JavaScript and HTML Canvas — no bu
 - Checkpoint gates that extend the timer; race the clock for score
 - Off-road slowdown, parallax scenery, and a scaling-pixel canvas that fits phones
 
-## Other project ideas
+## Development
 
-See [`projects.md`](projects.md).
+See [`CLAUDE.md`](CLAUDE.md) for codebase architecture and how the modules fit together.
