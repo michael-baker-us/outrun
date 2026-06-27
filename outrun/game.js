@@ -1,15 +1,15 @@
 // Main game loop — wires road, scenery, opponents, car, and HUD together,
 // plus the timer / score / checkpoint / game-over state machine.
 
-import { buildSegments, drawRoad, TRACK_LENGTH, NUM_SEGMENTS, SEGMENT_LENGTH, segmentProjections } from './road.js';
+import { buildSegments, projectRoad, drawRoad, TRACK_LENGTH, segmentProjections, getHorizonCurveX } from './road.js';
+import { drawBackground } from './sky.js';
 import { CAR, initInput, updateCar, drawCar, drawSmoke } from './car.js';
 import { drawScenery, getLastSpriteCount } from './scenery.js';
 import { drawCheckpoint } from './checkpoint.js';
 import { buildOpponents, updateOpponents, checkCollisions, drawOpponents } from './opponents.js';
 import { initDebug, recordFrameStart, recordPhysicsStep, recordFrameEnd, drawDebugOverlay } from './debug.js';
-
-const WIDTH  = 800;
-const HEIGHT = 500;
+import { initRenderer, getCtx, beginFrame, endFrame, WIDTH, HEIGHT } from './renderer.js';
+import { palette } from './palette.js';
 
 const START_TIME      = 40;       // seconds on the clock
 const CHECKPOINT_TIME = 8;         // bonus seconds per checkpoint
@@ -22,7 +22,8 @@ const CHECKPOINT_GAP  = 50000;    // cumulative distance between checkpoints
 // physics is identical at 30fps, 60fps, and 144fps.
 const PHYSICS_STEP = 1 / 120;
 
-let canvas, ctx, segments, opponents, trackSeed;
+let ctx;
+let segments, opponents, trackSeed;
 let cameraZ, distance, score, timeLeft, lastTime;
 let nextCheckpoint, flashText, flashUntil;
 let accumulator = 0;
@@ -44,11 +45,31 @@ export function resetGame() {
   accumulator = 0;
 }
 
+// Ordered render layers — background → foreground.
+// Phase 5 will insert post-fx passes between layers (e.g. bloom after 'traffic',
+// vignette before 'hud'). Keep the array shape stable so that's non-breaking.
+const LAYERS = [
+  // sky.js uses the previous frame's segmentProjections for parallax — imperceptible lag.
+  { name: 'sky',        draw: () => drawBackground(ctx, WIDTH, HEIGHT, getHorizonCurveX()) },
+  { name: 'road',       draw: () => drawRoad(ctx, segments, WIDTH, HEIGHT) },
+  { name: 'scenery',    draw: () => drawScenery(ctx, segments) },
+  { name: 'checkpoint', draw: () => drawCheckpoint(ctx, nextCheckpoint - distance) },
+  { name: 'traffic',    draw: () => drawOpponents(ctx, opponents, cameraZ) },
+  { name: 'particles',  draw: () => drawSmoke(ctx, WIDTH, HEIGHT) },
+  { name: 'player',     draw: () => drawCar(ctx, WIDTH, HEIGHT) },
+  { name: 'hud',        draw: () => drawHUD() },
+  { name: 'gameover',   draw: () => { if (_state === 'gameover') drawGameOver(); } },
+  { name: 'debug',      draw: () => drawDebugOverlay(ctx, WIDTH, HEIGHT, {
+      seed: trackSeed, car: CAR,
+      segmentsDrawn: segmentProjections.length,
+      spritesDrawn: getLastSpriteCount(),
+    }) },
+];
+
 export function init() {
-  canvas = document.getElementById('game');
-  canvas.width  = WIDTH;
-  canvas.height = HEIGHT;
-  ctx = canvas.getContext('2d');
+  const canvasEl = document.getElementById('game');
+  initRenderer(canvasEl);
+  ctx = getCtx();
 
   // Track seed: ?seed=<n> in the URL replays a specific layout; otherwise random.
   const seedParam = new URLSearchParams(location.search).get('seed');
@@ -57,7 +78,7 @@ export function init() {
     : (Math.floor(Math.random() * 0xffffffff) >>> 0);
   console.log(`OutRun track seed: ${trackSeed}  (replay with ?seed=${trackSeed})`);
 
-  segments = buildSegments(trackSeed);
+  segments  = buildSegments(trackSeed);
   opponents = buildOpponents(16);
   initInput();
   initDebug();
@@ -112,7 +133,6 @@ function update(dt) {
     flashUntil = performance.now() + 1800;
   }
 
-  // Countdown.
   timeLeft -= dt;
   if (timeLeft <= 0) {
     timeLeft = 0;
@@ -121,62 +141,52 @@ function update(dt) {
 }
 
 function render() {
-  drawRoad(ctx, segments, cameraZ, CAR.x, WIDTH, HEIGHT);
-  drawScenery(ctx, segments);
-  drawCheckpoint(ctx, nextCheckpoint - distance);
-  drawOpponents(ctx, opponents, cameraZ);
-  drawSmoke(ctx, WIDTH, HEIGHT);
-  drawCar(ctx, WIDTH, HEIGHT);
-  drawHUD(ctx, WIDTH, HEIGHT);
-
-  if (_state === 'gameover') drawGameOver(ctx, WIDTH, HEIGHT);
-
-  drawDebugOverlay(ctx, WIDTH, HEIGHT, {
-    seed: trackSeed,
-    car: CAR,
-    segmentsDrawn: segmentProjections.length,
-    spritesDrawn: getLastSpriteCount(),
-  });
+  beginFrame();
+  // Pre-pass: project road geometry into segmentProjections (no drawing).
+  // sky.js reads segmentProjections for parallax; all draw layers follow.
+  projectRoad(segments, cameraZ, CAR.x, WIDTH, HEIGHT);
+  for (const layer of LAYERS) layer.draw();
+  endFrame();
 }
 
-function drawHUD(ctx, w, h) {
+function drawHUD() {
+  const w = WIDTH, h = HEIGHT;
   ctx.font = 'bold 22px monospace';
 
   // Time (top-left)
-  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillStyle = palette.hud.bg;
   ctx.fillRect(12, 12, 150, 38);
-  ctx.fillStyle = timeLeft < 10 ? '#ff4444' : '#ffe44d';
+  ctx.fillStyle = timeLeft < 10 ? palette.hud.timeLow : palette.hud.time;
   ctx.textAlign = 'left';
   ctx.fillText(`TIME ${Math.ceil(timeLeft)}`, 22, 39);
 
   // Distance to next checkpoint (under the clock)
   const toCp = Math.max(0, Math.round((nextCheckpoint - distance) / 100));
   ctx.font = 'bold 15px monospace';
-  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillStyle = palette.hud.bg;
   ctx.fillRect(12, 54, 150, 24);
-  ctx.fillStyle = '#cfe8ff';
+  ctx.fillStyle = palette.hud.checkpoint;
   ctx.fillText(`NEXT CP ${toCp}m`, 22, 71);
   ctx.font = 'bold 22px monospace';
 
   // Score (top-right)
-  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillStyle = palette.hud.bg;
   ctx.fillRect(w - 212, 12, 200, 38);
-  ctx.fillStyle = '#fff';
+  ctx.fillStyle = palette.hud.text;
   ctx.textAlign = 'right';
   ctx.fillText(`SCORE ${score}`, w - 22, 39);
 
   // Speed (bottom-right)
   const mph = Math.round(CAR.speed / CAR.maxSpeed * 150);
-  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillStyle = palette.hud.bg;
   ctx.fillRect(w - 132, h - 48, 120, 36);
-  ctx.fillStyle = '#fff';
+  ctx.fillStyle = palette.hud.text;
   ctx.fillText(`${mph} MPH`, w - 22, h - 22);
   ctx.textAlign = 'left';
 
   // Track seed (bottom-left, small) so a layout can be replayed via ?seed=
   ctx.font = 'bold 12px monospace';
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
-  ctx.textAlign = 'left';
+  ctx.fillStyle = palette.hud.seed;
   ctx.fillText(`SEED ${trackSeed}`, 14, h - 14);
   ctx.font = 'bold 22px monospace';
 
@@ -184,26 +194,27 @@ function drawHUD(ctx, w, h) {
   if (performance.now() < flashUntil) {
     ctx.font = 'bold 34px monospace';
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#ffe44d';
+    ctx.fillStyle = palette.hud.flash;
     ctx.fillText(flashText, w / 2, 90);
     ctx.textAlign = 'left';
   }
 }
 
-function drawGameOver(ctx, w, h) {
-  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+function drawGameOver() {
+  const w = WIDTH, h = HEIGHT;
+  ctx.fillStyle = palette.gameover.overlay;
   ctx.fillRect(0, 0, w, h);
 
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#ff4444';
+  ctx.fillStyle = palette.gameover.title;
   ctx.font = 'bold 56px monospace';
   ctx.fillText('GAME OVER', w / 2, h / 2 - 30);
 
-  ctx.fillStyle = '#fff';
+  ctx.fillStyle = palette.gameover.text;
   ctx.font = 'bold 28px monospace';
   ctx.fillText(`FINAL SCORE  ${score}`, w / 2, h / 2 + 20);
 
-  ctx.fillStyle = '#ffe44d';
+  ctx.fillStyle = palette.gameover.prompt;
   ctx.font = '20px monospace';
   ctx.fillText('Press R to restart', w / 2, h / 2 + 64);
   ctx.textAlign = 'left';

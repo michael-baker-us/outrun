@@ -39,7 +39,10 @@ The game is vanilla JS with **native ES modules** (`<script type="module">`). En
 ```
 main.js
 ├── game.js
-│   ├── road.js         (geometry, projection, track gen)
+│   ├── renderer.js     (back-buffer + DPR-scaled display canvas)
+│   ├── palette.js      (all colour constants — swappable for time-of-day)
+│   ├── sky.js     →    palette.js, road.js (getHorizonCurveX for parallax)
+│   ├── road.js    →    palette.js
 │   ├── car.js          (physics, input, car renderer)
 │   ├── scenery.js  →   road.js
 │   ├── checkpoint.js → road.js
@@ -56,9 +59,15 @@ No circular dependencies. `debug.js` is browser-only and never imported by tests
 |---|---|---|
 | `segmentProjections[]` | `road.js` | `scenery.js` (exported array ref — mutations visible to all holders) |
 | `projectObject(dz, offset)` | `road.js` | `checkpoint.js`, `opponents.js` |
+| `projectRoad(segs, pos, playerX, W, H)` | `road.js` | `game.js` (projection pre-pass in `render()`) |
+| `drawRoad(ctx, segs, W, H)` | `road.js` | `game.js` (draw-only pass, no projection) |
+| `fogAlpha(dz)` | `road.js` | `scenery.js`, `opponents.js` (sprite/car depth fade) |
+| `getHorizonCurveX()` | `road.js` | `game.js` → `sky.js` (parallax scroll offset) |
 | `SEGMENT_LENGTH`, `NUM_SEGMENTS`, `TRACK_LENGTH`, `DRAW_DISTANCE` | `road.js` | `game.js`, `opponents.js` |
 | `makeRng(seed)` | `road.js` | tests |
 | `buildSegments(seed)` | `road.js` | `game.js`, tests |
+| `drawBackground(ctx, W, H, curveX)` | `sky.js` | `game.js` (sky LAYER) |
+| `invalidateSkyGradient()` | `sky.js` | Phase 5 palette swapper |
 | `CAR`, `keys{}` | `car.js` | `game.js`, `controls.js` |
 | `setTiltSteer(v)` | `car.js` | `controls.js` (can't assign a `let` across module boundary) |
 | `SPIN_TRIGGER_SPEED`, `startSpinOut()` | `car.js` | `opponents.js`, tests |
@@ -83,16 +92,22 @@ loop(now):
 
 ### Rendering pipeline (per frame)
 
-`game.js:render()` calls these in painter's-algorithm order (background → foreground):
+`game.js:render()` runs a **projection pre-pass** followed by named draw layers:
 
-1. `drawRoad()` — sky gradient, then road segments **far-to-near** (overdraw handles occlusion). Populates `segmentProjections[]` as a side effect.
-2. `drawScenery()` — trees/billboards using `segmentProjections`, far-to-near.
-3. `drawCheckpoint()` — gate banner at `dz = nextCheckpoint − distance` ahead.
-4. `drawOpponents()` — traffic cars, each projected via `projectObject(depth, offset)`.
-5. `drawSmoke()` — tire-smoke particles above the player car.
-6. `drawCar()` — player car sprite at the bottom-center of the canvas.
-7. `drawHUD()` — time, score, speed, seed overlay.
-8. `drawDebugOverlay()` — dev stats (hidden unless toggled).
+**Pre-pass (no drawing):**
+- `projectRoad(segments, cameraZ, CAR.x, W, H)` — populates `segmentProjections[]` and the internal `frameSegs[]`. Called once before any layer draws, so sky.js can read `segmentProjections` for current-frame parallax.
+
+**Draw layers (painter's order, background → foreground):**
+
+1. `drawBackground()` — sky gradient + sun + clouds + two parallax mountain ranges. Uses `getHorizonCurveX()` to scroll layers when turning.
+2. `drawRoad()` — base grass fill, then road segments **far-to-near** with fog overlay per segment.
+3. `drawScenery()` — trees/billboards using `segmentProjections`, far-to-near. Fog-faded via `globalAlpha`.
+4. `drawCheckpoint()` — gate banner at `dz = nextCheckpoint − distance` ahead.
+5. `drawOpponents()` — traffic cars, each projected via `projectObject(depth, offset)`. Fog-faded.
+6. `drawSmoke()` — tire-smoke particles above the player car.
+7. `drawCar()` — player car sprite at the bottom-center of the canvas.
+8. `drawHUD()` — time, score, speed, seed overlay.
+9. `drawDebugOverlay()` — dev stats (hidden unless toggled).
 
 ### Pseudo-3D projection
 

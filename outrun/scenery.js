@@ -2,7 +2,7 @@
 // per-segment projection cache (segmentProjections, from road.js).
 // Drawn far-to-near so nearer objects overlap farther ones.
 
-import { segmentProjections } from './road.js';
+import { segmentProjections, fogAlpha } from './road.js';
 
 // Below this on-screen road half-width a segment is near the horizon, where
 // rounding makes it flicker in and out of the draw set. Skipping sprites there
@@ -21,8 +21,11 @@ export function drawScenery(ctx, segments) {
     if (proj.roadW < SCENERY_MIN_ROADW) continue;
 
     // Clip to the hill silhouette in front of this segment so scenery behind a
-    // crest is hidden instead of drawing through it.
+    // crest is hidden instead of drawing through it. Fog fades sprites toward the
+    // horizon haze color by reducing their opacity (the fogged road shows through).
+    const fog = fogAlpha(proj.dz);
     ctx.save();
+    ctx.globalAlpha = Math.max(0.02, 1 - fog);
     ctx.beginPath();
     ctx.rect(0, 0, 4096, proj.clip);
     ctx.clip();

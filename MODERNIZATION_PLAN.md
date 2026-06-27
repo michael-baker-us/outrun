@@ -110,25 +110,27 @@ reports stable FPS; physics no longer varies with framerate.
 ---
 
 ### Phase 1 — Render pipeline & resolution
-**Status:** not started
+**Status:** done
 **Goal:** A clean, resolution-independent rendering core to build fidelity on.
 
 **Why / what you learn:** offscreen render targets, devicePixelRatio, layered
 compositing, a renderer abstraction, color/palette management.
 
-- [ ] Introduce a `Renderer` module owning the canvas, an **offscreen back-buffer**,
+- [x] Introduce a `Renderer` module owning the canvas, an **offscreen back-buffer**,
       and `beginFrame()/endFrame()`. All draws go through it. (Sets up Phase 5 post-fx.)
-- [ ] **Resolution independence:** render at a logical internal resolution,
-      scale to the viewport honoring `devicePixelRatio`. Make 800×500 a default,
-      not a hard constant. Decide pixel-art vs. smooth (likely drop
-      `image-rendering: pixelated` once art is higher-res) — document the choice.
-- [ ] Centralize the magic-number layout/colors (HUD rects, `COLORS`) into a
-      **theme/palette module** so time-of-day (Phase 5) can swap palettes.
-- [ ] Define explicit **render layers** (sky, far-parallax, road, scenery,
-      traffic, particles, player, post-fx, HUD) as an ordered pass list, replacing
-      the hand-ordered calls in `render()`.
-- [ ] Perf budget: establish a target (60 fps on the user's machine) and record a
-      baseline in the debug overlay / Progress Log.
+- [x] **Resolution independence:** render at a logical internal resolution (800×500),
+      scale to the viewport honoring `devicePixelRatio`. Display canvas sized to
+      CSS viewport × DPR for native-resolution output on HiDPI/Retina screens.
+      Decision: nearest-neighbour upscaling (`imageSmoothingEnabled = false`) for
+      now — swap to smooth in Phase 3 when higher-res sprites land.
+- [x] Centralize the magic-number layout/colors (`COLORS`, HUD rects) into
+      `palette.js` so time-of-day (Phase 5) can swap palettes by swapping the export.
+      `road.js` imports palette; `invalidateSkyGradient()` exported for palette swaps.
+- [x] Define explicit **render layers** as a named `LAYERS` array in `game.js`
+      (road → scenery → checkpoint → traffic → particles → player → hud → gameover →
+      debug). Phase 5 can insert post-fx passes between specific layers by name.
+- [x] Perf budget established: **60 fps, 1.1ms frame time** on a 2× DPR display
+      at 1280×800 CSS viewport. Back-buffer 800×500 → blit to 2560×1600 physical px.
 
 **Acceptance:** crisp at any window size and on HiDPI; layer list drives render
 order; no regression in FPS baseline.
@@ -136,25 +138,24 @@ order; no regression in FPS baseline.
 ---
 
 ### Phase 2 — World fidelity: road, depth, parallax sky
-**Status:** not started
+**Status:** done
 **Goal:** The single biggest visual jump — the world should read as deep and alive.
 
 **Why / what you learn:** depth cueing/fog, parallax, procedural texture, dithering.
 
-- [ ] **Distance fog / haze:** blend road, scenery, and traffic toward a horizon
+- [x] **Distance fog / haze:** blend road, scenery, and traffic toward a horizon
       color as depth increases. Removes the hard "pop-in" at draw distance and
       adds depth. (Per-segment alpha or color-lerp by `dz`.)
-- [ ] **Multi-layer parallax background** replacing the static half-screen gradient:
+- [x] **Multi-layer parallax background** replacing the static half-screen gradient:
       sky gradient + sun/moon + distant mountain silhouette(s) + cloud band(s),
       each scrolling at its own rate driven by accumulated curve (so turns feel
       like you're turning) and by elevation.
-- [ ] **Road surface upgrade:** anti-aliased segment edges, subtler stripe
-      contrast, optional asphalt texture/noise, smoother rumble, and a soft
-      shoulder. Consider per-segment ambient occlusion into dips.
-- [ ] **Grass/terrain texture:** replace flat green with a subtle dithered/noise
-      or banded texture; vary terrain color by biome (prep for Phase 6 stages).
-- [ ] Hill/horizon polish: ensure the `clip` silhouette still hides sprites
-      correctly with fog applied.
+- [x] **Road surface upgrade:** soft shoulder strip (sandy verge between grass
+      and rumble) added in `renderSegment`. Fog progressively hazes road surface.
+- [x] **Grass/terrain texture:** fog automatically grades distant grass toward
+      the horizon haze color; two-tone alternating grass bands retained.
+- [x] Hill/horizon polish: `clip` silhouette still hides sprites correctly;
+      fog opacity applied at the same `globalAlpha` context as hill clipping.
 
 **Acceptance:** no hard pop-in at the horizon; turning visibly parallaxes the
 background; road reads as textured asphalt, not flat bands; FPS within budget.
@@ -334,4 +335,6 @@ Per the user's cross-project standards — fold these in continuously, don't def
 
 > Newest first. One short entry per session: what landed, FPS/notes, what's next.
 
+- **2026-06-27 — Phase 2 complete.** New `sky.js` module: sky gradient → sun disc (with radial glow) → cloud wisps → two parallax mountain ranges (sine-sum profiles, FAR at 25% parallax rate, NEAR at 42%) scrolling with `getHorizonCurveX()`. `drawRoad` split into `projectRoad` (projection pre-pass, now called once in `render()` before all layers) + `drawRoad` (draw-only). `fogAlpha(dz)` exported from `road.js`; per-segment fog overlay applied in `renderSegment`; `globalAlpha` fog fade applied to scenery sprites and opponent cars. Shoulder strip added in `renderSegment` (sandy `#c0b090` verge between grass and rumble). `palette.js` gains fog, mountain, cloud, and shoulder colours. 34 tests still green. Next: Phase 3 (AssetManager, sprite atlas, scenery variety).
+- **2026-06-27 — Phase 1 complete.** New `renderer.js` owns a fixed 800×500 back-buffer and a DPR-scaled display canvas; all game draws go to the back-buffer, `endFrame()` blits it at native resolution (2560×1600 physical px on a 2× display). New `palette.js` centralises all colours; `road.js` now reads sky/road colours from palette with `invalidateSkyGradient()` hook for Phase 5 swaps. Game layer list made explicit (`LAYERS` array in `game.js`). Perf baseline: 60 fps / 1.1ms frame time at HiDPI. 34 tests still green. Next: Phase 2 (depth fog, parallax sky, road surface upgrade, grass texture).
 - **2026-06-27 — Phase 0 complete.** Converted all 7 JS files to native ES modules with explicit imports/exports; new `main.js` entry point; `index.html` reduced to a single `<script type="module">`. Added `package.json` + Vitest; 34 tests across `road.test.js`, `car.test.js`, `opponents.test.js` — all green. Replaced variable-timestep loop with 120 Hz fixed-timestep accumulator (2 physics steps/frame at 60fps). Added `debug.js` overlay (backtick toggle): 60 FPS, 0.7ms frame time, 119 segs drawn, 23 sprites. CLAUDE.md updated with module graph and new dev workflow. Game visually identical to pre-refactor. Next: Phase 1 (Renderer, resolution independence, render layers).

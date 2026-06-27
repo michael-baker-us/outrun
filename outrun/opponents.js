@@ -2,7 +2,7 @@
 // Positioned with the same per-segment projection cache the road uses,
 // so they sit correctly on curves. Collision slows and nudges the player.
 
-import { SEGMENT_LENGTH, TRACK_LENGTH, DRAW_DISTANCE, projectObject } from './road.js';
+import { SEGMENT_LENGTH, TRACK_LENGTH, DRAW_DISTANCE, projectObject, fogAlpha } from './road.js';
 import { drawCar3D, startSpinOut, SPIN_TRIGGER_SPEED } from './car.js';
 
 const OPPONENT_COLORS = ['#2266cc', '#cccc22', '#22aa55', '#aa44cc', '#ee7711'];
@@ -85,7 +85,9 @@ export function drawOpponents(ctx, opponents, cameraZ) {
     if (w < 5) continue;
 
     // Clip to the hill silhouette so a car beyond a crest is hidden by it.
+    // Fog fades the car with distance — at max fog it's nearly invisible.
     ctx.save();
+    ctx.globalAlpha = Math.max(0.02, 1 - fogAlpha(depth));
     ctx.beginPath();
     ctx.rect(0, 0, 4096, pr.clip);
     ctx.clip();

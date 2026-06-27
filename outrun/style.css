@@ -16,17 +16,17 @@ html, body {
 }
 
 body {
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  /* renderer.js positions the game canvas absolutely via JS (DPR-aware). */
+  position: relative;
 }
 
 canvas {
   display: block;
-  /* Scale to fit the viewport while keeping the 800x500 aspect ratio. */
-  max-width: 100vw;
-  max-height: 100vh;
-  image-rendering: pixelated;
+  /* Size, position, and scaling are managed by renderer.js.
+     image-rendering: pixelated applies to CSS-scaled elements; our canvas
+     is JS-sized to the physical pixel count so CSS scaling is minimal.
+     Using nearest-neighbour in JS (imageSmoothingEnabled=false) instead — see
+     renderer.js endFrame(). Swap to smooth when Phase 3 adds higher-res art. */
   touch-action: none;
 }
 
