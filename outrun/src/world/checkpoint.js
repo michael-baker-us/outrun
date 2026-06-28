@@ -2,7 +2,7 @@
 // the depth of the next checkpoint (dz = nextCheckpoint - distance ahead).
 // Uses projectObject() from road.js so it sits on the road and follows curves.
 
-import { projectObject } from './road.js';
+import { projectObject } from '../rendering/road.js';
 
 const CHECKPOINT_VISIBLE_DZ = 22000; // only draw once it's within the drawn road
 

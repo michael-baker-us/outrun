@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { AssetManager } from '../outrun/assets.js';
+import { AssetManager } from '../outrun/src/world/assets.js';
 
 describe('AssetManager — no assets registered', () => {
   test('progress is 1 when nothing is registered', () => {

@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'vitest';
-import { buildOpponents, checkCollisions, COLLISION_HALF } from '../outrun/opponents.js';
-import { SEGMENT_LENGTH, TRACK_LENGTH } from '../outrun/road.js';
-import { SPIN_TRIGGER_SPEED } from '../outrun/car.js';
+import { buildOpponents, checkCollisions, COLLISION_HALF } from '../outrun/src/world/opponents.js';
+import { SEGMENT_LENGTH, TRACK_LENGTH } from '../outrun/src/rendering/road.js';
+import { SPIN_TRIGGER_SPEED } from '../outrun/src/world/car.js';
 
 function makeCar(overrides = {}) {
   return {

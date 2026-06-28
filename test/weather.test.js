@@ -3,7 +3,7 @@ import {
   setWeather, getWeatherMode,
   getGripMultiplier, getExtraFogDensity,
   updateWeather, resetWeather,
-} from '../outrun/weather.js';
+} from '../outrun/src/systems/weather.js';
 
 beforeEach(() => { resetWeather(); });
 

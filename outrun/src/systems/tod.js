@@ -3,8 +3,8 @@
 //
 // Phase mapping: 0 = dawn, 0.25 = day (noon), 0.5 = dusk, 0.75 = night (midnight).
 
-import { applyTODPalette } from './palette.js';
-import { invalidateSkyGradient } from './sky.js';
+import { applyTODPalette } from '../rendering/palette.js';
+import { invalidateSkyGradient } from '../rendering/sky.js';
 
 const CYCLE_DURATION = 180; // seconds for a full day/night cycle
 

@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { STAGES, getStageIndex, getStage } from '../outrun/stage.js';
+import { STAGES, getStageIndex, getStage } from '../outrun/src/world/stage.js';
 
 describe('getStageIndex', () => {
   test('returns 0 at distance 0', () => {

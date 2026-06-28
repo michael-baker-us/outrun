@@ -10,5 +10,6 @@ export const settings = {
   webglRoad:     false,
   difficulty:    'normal',
   vehicleIdx:    0,
-  boostsEnabled: true,
+  boostsEnabled:   true,
+  trafficEnabled:  true,
 };

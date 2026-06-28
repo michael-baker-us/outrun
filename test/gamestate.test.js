@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from 'vitest';
-import { getGameState, setGameState, onEnterState, onExitState, resetGameState } from '../outrun/gamestate.js';
+import { getGameState, setGameState, onEnterState, onExitState, resetGameState } from '../outrun/src/core/gamestate.js';
 
 beforeEach(() => { resetGameState(); });
 

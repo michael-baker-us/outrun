@@ -1,9 +1,9 @@
 // Touch/tilt controls: maps on-screen buttons and device tilt to the same
 // `keys` object the keyboard uses. Also polls the Gamepad API at ~60 Hz.
 
-import { keys, setTiltSteer } from './car.js';
-import { startGame, getState } from './game.js';
-import { unlockAudio } from './audio.js';
+import { keys, setTiltSteer } from './world/car.js';
+import { startGame, getState } from './core/game.js';
+import { unlockAudio } from './systems/audio.js';
 
 // ---- Tilt steering --------------------------------------------------------
 

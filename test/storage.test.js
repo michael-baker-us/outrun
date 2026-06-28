@@ -3,7 +3,7 @@ import {
   getHighScores, addHighScore, isHighScore,
   saveSettings, loadSettings,
   saveLastSeed, loadLastSeed,
-} from '../outrun/storage.js';
+} from '../outrun/src/core/storage.js';
 
 // Fake store so tests don't touch a real DOM / localStorage.
 function makeStore() {

@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from 'vitest';
-import { CAR, keys, setTiltSteer, updateCar, startSpinOut, SPIN_TRIGGER_SPEED } from '../outrun/car.js';
+import { CAR, keys, setTiltSteer, updateCar, startSpinOut, SPIN_TRIGGER_SPEED } from '../outrun/src/world/car.js';
 
 // Factory for isolated car state — tests should not mutate the shared CAR export.
 function makeCar(overrides = {}) {

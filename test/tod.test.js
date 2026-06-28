@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from 'vitest';
-import { updateTOD, setTODPhase, getTODPhase, getNightFactor, resetTOD } from '../outrun/tod.js';
+import { updateTOD, setTODPhase, getTODPhase, getNightFactor, resetTOD } from '../outrun/src/systems/tod.js';
 
 beforeEach(() => { resetTOD(); });
 

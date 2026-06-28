@@ -1,26 +1,26 @@
 // Main game loop — wires road, scenery, opponents, car, and HUD together.
 // Game state machine: title → playing ↔ paused/settings → gameover → title
 
-import { buildSegments, projectRoad, drawRoad, TRACK_LENGTH, segmentProjections, getHorizonCurveX, fogAlpha } from './road.js';
-import { isWebGLSupported, initWebGL, drawRoadGL, getWebGLCanvas } from './webgl-road.js';
-import { drawBackground } from './sky.js';
-import { AssetManager } from './assets.js';
-import { buildSprites } from './sprites.js';
-import { CAR, initInput, updateCar, drawCar, drawCar3D } from './car.js';
-import { updateParticles, drawParticles, emitSmoke, emitDust, emitExhaust, emitSparks, resetParticles, getParticleCount } from './particles.js';
-import { drawScenery, getLastSpriteCount } from './scenery.js';
-import { drawCheckpoint } from './checkpoint.js';
-import { buildOpponents, updateOpponents, checkCollisions, drawOpponents, VEHICLE_TYPES, OPPONENT_COLORS } from './opponents.js';
-import { initDebug, recordFrameStart, recordPhysicsStep, recordFrameEnd, drawDebugOverlay, getFPS } from './debug.js';
-import { initRenderer, getCtx, beginFrame, endFrame, captureGhost, getGhostCanvas, WIDTH, HEIGHT } from './renderer.js';
-import { palette } from './palette.js';
-import { updateTOD, setTODPhase, getTODPhase, getNightFactor, resetTOD } from './tod.js';
-import { setWeather, getWeatherMode, updateWeather, drawWeather, getGripMultiplier, resetWeather } from './weather.js';
+import { buildSegments, projectRoad, drawRoad, TRACK_LENGTH, DRAW_DISTANCE, SEGMENT_LENGTH, segmentProjections, getHorizonCurveX, fogAlpha, projectObject, makeRng } from '../rendering/road.js';
+import { isWebGLSupported, initWebGL, drawRoadGL, getWebGLCanvas } from '../rendering/webgl-road.js';
+import { drawBackground } from '../rendering/sky.js';
+import { AssetManager } from '../world/assets.js';
+import { buildSprites } from '../rendering/sprites.js';
+import { CAR, initInput, updateCar, drawCar, drawCar3D } from '../world/car.js';
+import { updateParticles, drawParticles, emitSmoke, emitDust, emitExhaust, emitSparks, resetParticles, getParticleCount } from '../rendering/particles.js';
+import { drawScenery, getLastSpriteCount } from '../rendering/scenery.js';
+import { drawCheckpoint } from '../world/checkpoint.js';
+import { buildOpponents, updateOpponents, checkCollisions, drawOpponents, VEHICLE_TYPES, OPPONENT_COLORS } from '../world/opponents.js';
+import { initDebug, recordFrameStart, recordPhysicsStep, recordFrameEnd, drawDebugOverlay, getFPS } from '../debug.js';
+import { initRenderer, getCtx, beginFrame, endFrame, captureGhost, getGhostCanvas, WIDTH, HEIGHT } from '../rendering/renderer.js';
+import { palette } from '../rendering/palette.js';
+import { updateTOD, setTODPhase, getTODPhase, getNightFactor, resetTOD } from '../systems/tod.js';
+import { setWeather, getWeatherMode, updateWeather, drawWeather, getGripMultiplier, resetWeather } from '../systems/weather.js';
 import { settings } from './settings.js';
 import { getGameState, setGameState } from './gamestate.js';
-import { unlockAudio, updateEngineSound, playSFX, startMusic, stopMusic, resetAudio, setMasterVolume } from './audio.js';
+import { unlockAudio, updateEngineSound, playSFX, startMusic, stopMusic, resetAudio, setMasterVolume } from '../systems/audio.js';
 import { addHighScore, getHighScores, loadSettings, saveSettings, saveLastSeed } from './storage.js';
-import { STAGES, getStage, getStageIndex } from './stage.js';
+import { STAGES, getStage, getStageIndex } from '../world/stage.js';
 
 const DIFFICULTY = {
   easy:   { startTime: 40, checkpointTime: 8 },
@@ -45,6 +45,17 @@ let ctx;
 let segments, opponents, trackSeed;
 let cameraZ, distance, score, timeLeft, lastTime;
 let nextCheckpoint, flashText, flashUntil;
+
+// Boost pad system
+const _BASE_MAX_SPEED = CAR.maxSpeed; // 9000 — fixed reference, never mutated
+let _boostPads    = [];  // [{pos, xMin, xMax}] generated per run
+let _boostPadIdx  = 0;   // index of next upcoming pad
+let _boostUntil   = 0;   // ms when active boost phase ends
+let _boostFadeEnd = 0;   // ms when fade-out completes
+const _BOOST_ACTIVE = 3000;  // ms of full-speed boost
+const _BOOST_FADE   = 2000;  // ms to taper back to normal speed
+const _BOOST_MULT   = 1.40;
+const _BOOST_PAD_DEPTH = 2400; // road units the pad strip spans
 let accumulator = 0;
 let assets = null;
 
@@ -85,6 +96,7 @@ export function startGame() {
   _rebuildOpponents();
   // Apply vehicle for selected stage
   _applyPlayerVehicle();
+  _generateBoostPads();
   resetGame();
   const selStage = STAGES[_selectedStage];
   if (selStage.special) {
@@ -114,9 +126,13 @@ export function resetGame() {
   flashUntil      = 0;
   CAR.x              = 0;
   CAR.speed          = 0;
+  CAR.maxSpeed       = _BASE_MAX_SPEED;
   CAR.invuln         = 0;
   CAR.gripMultiplier = 1.0;
   accumulator        = 0;
+  _boostUntil        = 0;
+  _boostFadeEnd      = 0;
+  _boostPadIdx       = 0;
   _shakeIntensity    = 0;
   _cameraDip         = 0;
   _lowFpsFrames      = 0;
@@ -125,6 +141,43 @@ export function resetGame() {
   resetParticles();
   resetTOD();
   resetWeather();
+}
+
+function _generateBoostPads() {
+  _boostPads   = [];
+  _boostPadIdx = 0;
+  if (!settings.boostsEnabled) return;
+  const rng = makeRng((Date.now() ^ (Math.random() * 0xFFFFFFFF)) >>> 0);
+  // Exactly one pad in every other checkpoint gap (gaps 2, 4, 6 …)
+  // so the player earns it after clearing the preceding checkpoint.
+  for (let cp = 2; cp * CHECKPOINT_GAP < 3_000_000; cp += 2) {
+    const gapStart = (cp - 1) * CHECKPOINT_GAP;
+    const pos = gapStart + CHECKPOINT_GAP * 0.2 + rng() * CHECKPOINT_GAP * 0.6;
+    const cx  = (rng() * 2 - 1) * 0.55;
+    const hw  = 0.20 + rng() * 0.22;
+    _boostPads.push({ pos, xMin: cx - hw, xMax: cx + hw });
+  }
+}
+
+function _checkBoostPads() {
+  if (!settings.boostsEnabled) return;
+  // Advance past consumed / behind pads
+  while (_boostPadIdx < _boostPads.length && _boostPads[_boostPadIdx].pos < distance - 400) {
+    _boostPadIdx++;
+  }
+  // Only trigger when fully out of the boost/fade cycle
+  if (performance.now() >= _boostFadeEnd && _boostPadIdx < _boostPads.length) {
+    const pad = _boostPads[_boostPadIdx];
+    if (pad.pos <= distance + 400 && CAR.x >= pad.xMin && CAR.x <= pad.xMax) {
+      const now     = performance.now();
+      _boostUntil   = now + _BOOST_ACTIVE;
+      _boostFadeEnd = _boostUntil + _BOOST_FADE;
+      CAR.speed     = _BASE_MAX_SPEED * _BOOST_MULT; // instant speed kick
+      _boostPadIdx++;
+      flashText  = 'SPEED BOOST!';
+      flashUntil = now + 1600;
+    }
+  }
 }
 
 // ---- Render layers ----------------------------------------------------------
@@ -161,6 +214,7 @@ const LAYERS = [
       if (th === 'space') _drawSpaceGroundStars();
       else if (th === 'sea')  _drawSeaWaves();
       else if (th === 'dirt') _drawDirtTireRuts();
+      if (settings.boostsEnabled && getGameState() === 'playing') _drawBoostPads();
     } },
   { name: 'lights',
     draw: () => _drawNightLights() },
@@ -184,6 +238,7 @@ const LAYERS = [
     draw: () => { if (getGameState() === 'playing') drawCheckpoint(ctx, nextCheckpoint - distance); } },
   { name: 'traffic',
     draw: () => {
+      if (!settings.trafficEnabled && getGameState() === 'playing') return;
       const s = getGameState();
       const camZ = (s === 'title' || s === 'vehicleSelect') ? _attractZ : cameraZ;
       drawOpponents(ctx, opponents, camZ, getNightFactor());
@@ -269,6 +324,8 @@ export function init() {
     if (typeof saved.vehicleIdx === 'number' && saved.vehicleIdx < PLAYER_VEHICLES.length) {
       _vehicleSelectIdx = saved.vehicleIdx;
     }
+    if (typeof saved.boostsEnabled  === 'boolean') settings.boostsEnabled  = saved.boostsEnabled;
+    if (typeof saved.trafficEnabled === 'boolean') settings.trafficEnabled = saved.trafficEnabled;
   }
 
   // URL param ?renderer=webgl overrides saved setting (useful for quick comparison)
@@ -310,6 +367,9 @@ function _setupKeyboard() {
         const diffs = Object.keys(DIFFICULTY);
         const idx = diffs.indexOf(settings.difficulty);
         settings.difficulty = diffs[(idx + 1) % diffs.length];
+        _saveSettings();
+      } else if (e.key === 'b' || e.key === 'B') {
+        settings.boostsEnabled = !settings.boostsEnabled;
         _saveSettings();
       } else if (e.key === 'v' || e.key === 'V') {
         _menuIdx = 0; setGameState('vehicleSelect');
@@ -382,6 +442,7 @@ function _setupKeyboard() {
           setMasterVolume(settings.volume);
         }
         if (_menuIdx === 4) _toggleWebGL();
+        if (_menuIdx === 5) settings.trafficEnabled = !settings.trafficEnabled;
         _saveSettings(); return;
       }
       // ESC or Enter on BACK item → return to previous state
@@ -389,10 +450,11 @@ function _setupKeyboard() {
         setGameState(_settingsReturn); _menuIdx = 0; return;
       }
       if (e.key === ' ' || e.key === 'Enter') {
-        if (_menuIdx === 0) settings.motionBlur    = !settings.motionBlur;
-        if (_menuIdx === 1) settings.filmGrain     = !settings.filmGrain;
-        if (_menuIdx === 2) settings.autoDowngrade = !settings.autoDowngrade;
+        if (_menuIdx === 0) settings.motionBlur     = !settings.motionBlur;
+        if (_menuIdx === 1) settings.filmGrain      = !settings.filmGrain;
+        if (_menuIdx === 2) settings.autoDowngrade  = !settings.autoDowngrade;
         if (_menuIdx === 4) _toggleWebGL();
+        if (_menuIdx === 5) settings.trafficEnabled = !settings.trafficEnabled;
         _saveSettings();
       }
       return;
@@ -441,6 +503,8 @@ function _saveSettings() {
     webglRoad:     settings.webglRoad,
     difficulty:    settings.difficulty,
     vehicleIdx:    _vehicleSelectIdx,
+    boostsEnabled:   settings.boostsEnabled,
+    trafficEnabled:  settings.trafficEnabled,
   });
 }
 
@@ -473,6 +537,18 @@ function loop(now) {
     updateWeather(elapsed);
     _applyStageColors();
 
+    // Boost: immediate speed kick on pad hit, then 3 s full speed, 2 s linear fade back
+    { const _n = performance.now();
+      if (_n < _boostUntil) {
+        CAR.maxSpeed = _BASE_MAX_SPEED * _BOOST_MULT;
+      } else if (_n < _boostFadeEnd) {
+        const t = (_n - _boostUntil) / _BOOST_FADE;
+        CAR.maxSpeed = _BASE_MAX_SPEED * (_BOOST_MULT - (_BOOST_MULT - 1.0) * t);
+      } else {
+        CAR.maxSpeed = _BASE_MAX_SPEED;
+      }
+    }
+
     accumulator += elapsed;
     while (accumulator >= PHYSICS_STEP) {
       update(PHYSICS_STEP);
@@ -481,7 +557,7 @@ function loop(now) {
     }
     _emitAmbientParticles();
     _checkAutoDowngrade();
-    updateEngineSound(CAR.speed / CAR.maxSpeed);
+    updateEngineSound(CAR.speed / _BASE_MAX_SPEED);
   }
 
   // Particles settle gracefully while paused
@@ -498,13 +574,14 @@ function loop(now) {
 function update(dt) {
   CAR.gripMultiplier = getGripMultiplier();
   updateCar(CAR, dt);
-  updateOpponents(opponents, dt);
+  if (settings.trafficEnabled) updateOpponents(opponents, dt);
 
   cameraZ += CAR.speed * dt;
   if (cameraZ >= TRACK_LENGTH) cameraZ -= TRACK_LENGTH;
 
   distance += CAR.speed * dt;
   score = Math.floor(distance / 100);
+  _checkBoostPads();
 
   // Stage transition: special stages stay fixed; regular stages flash on threshold crossing
   if (!STAGES[_selectedStage]?.special) {
@@ -517,7 +594,7 @@ function update(dt) {
     }
   }
 
-  const spinHit = checkCollisions(opponents, CAR, cameraZ, dt);
+  const spinHit = settings.trafficEnabled && checkCollisions(opponents, CAR, cameraZ, dt);
   if (spinHit) {
     emitSparks(WIDTH / 2, HEIGHT - 30, 18);
     playSFX('crash');
@@ -820,6 +897,53 @@ function _drawDirtTireRuts() {
   ctx.globalAlpha = 1;
 }
 
+// ---- Boost pad rendering ----------------------------------------------------
+
+function _drawBoostPads() {
+  const now   = performance.now();
+  const pulse = 0.55 + 0.45 * Math.sin(now / 150); // ~6 Hz glow pulse
+
+  for (let k = _boostPadIdx; k < _boostPads.length; k++) {
+    const pad    = _boostPads[k];
+    const dzNear = pad.pos - distance;
+    if (dzNear < 8) continue;
+    if (dzNear > DRAW_DISTANCE * SEGMENT_LENGTH * 0.88) break; // outside draw distance
+
+    const dzFar = dzNear + _BOOST_PAD_DEPTH;
+    const pnl = projectObject(dzNear, pad.xMin);
+    const pnr = projectObject(dzNear, pad.xMax);
+    const pfl = projectObject(dzFar,  pad.xMin);
+    const pfr = projectObject(dzFar,  pad.xMax);
+    if (!pnl || !pnr || !pfl || !pfr) continue;
+
+    const a = pulse * (1 - fogAlpha(dzNear) * 0.6);
+
+    // Main glowing strip
+    ctx.fillStyle = `rgba(180,255,20,${(0.50 * a).toFixed(2)})`;
+    ctx.beginPath();
+    ctx.moveTo(pnl.x, pnl.y); ctx.lineTo(pnr.x, pnr.y);
+    ctx.lineTo(pfr.x, pfr.y); ctx.lineTo(pfl.x, pfl.y);
+    ctx.closePath(); ctx.fill();
+
+    // Bright edge lines
+    ctx.strokeStyle = `rgba(220,255,80,${(0.90 * a).toFixed(2)})`;
+    ctx.lineWidth = Math.max(1, pnl.scale * 12);
+    ctx.beginPath(); ctx.moveTo(pnl.x, pnl.y); ctx.lineTo(pnr.x, pnr.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(pfl.x, pfl.y); ctx.lineTo(pfr.x, pfr.y); ctx.stroke();
+
+    // Chevron arrow toward far end (indicates direction)
+    const mx = (pnl.x + pnr.x) / 2, my = (pnl.y + pnr.y) / 2;
+    const fx = (pfl.x + pfr.x) / 2, fy = (pfl.y + pfr.y) / 2;
+    const aw = (pnr.x - pnl.x) * 0.22;
+    ctx.fillStyle = `rgba(255,255,100,${(0.65 * a).toFixed(2)})`;
+    ctx.beginPath();
+    ctx.moveTo(mx, my);
+    ctx.lineTo(mx - aw, my + (my - fy) * 0.35);
+    ctx.lineTo(mx + aw, my + (my - fy) * 0.35);
+    ctx.closePath(); ctx.fill();
+  }
+}
+
 // ---- Stage color override ---------------------------------------------------
 
 const _DEFAULT_RUMBLE   = ['#cc2b2b', '#efefef'];
@@ -1010,7 +1134,7 @@ function drawHUD() {
   ctx.textAlign = 'right';
   ctx.fillText(`SCORE ${score}`, w - 22, 39);
 
-  const mph = Math.round(CAR.speed / CAR.maxSpeed * 150);
+  const mph = Math.round(CAR.speed / _BASE_MAX_SPEED * 150);
   ctx.fillStyle = palette.hud.bg; ctx.fillRect(w - 132, h - 48, 120, 36);
   ctx.fillStyle = palette.hud.text;
   ctx.fillText(`${mph} MPH`, w - 22, h - 22);
@@ -1108,6 +1232,11 @@ function drawTitleScreen() {
     ctx.fillText(`[V] VEHICLE: ${v.name}`, sx, dy + 24);
   }
 
+  // Boost toggle
+  ctx.font = '12px monospace';
+  ctx.fillStyle = settings.boostsEnabled ? '#55ff88' : 'rgba(255,255,255,0.28)';
+  ctx.fillText(`[B] SPEED BOOSTS: ${settings.boostsEnabled ? 'ON' : 'OFF'}`, sx, dy + 42);
+
   if (Math.floor(now / 520) % 2 === 0) {
     ctx.font = 'bold 22px monospace'; ctx.fillStyle = '#ffe44d';
     ctx.fillText('PRESS SPACE TO RACE', w / 2, h * 0.73);
@@ -1125,7 +1254,7 @@ function drawTitleScreen() {
   }
 
   ctx.font = '10px monospace'; ctx.fillStyle = 'rgba(255,255,255,0.25)';
-  ctx.fillText('[←→] STAGE  [D] DIFFICULTY  [V] VEHICLE  [SPACE] RACE  [I] HELP  [ESC] SETTINGS', w / 2, h - 14);
+  ctx.fillText('[←→] STAGE  [D] DIFFICULTY  [B] BOOSTS  [V] VEHICLE  [SPACE] RACE  [I] HELP  [ESC] SETTINGS', w / 2, h - 14);
   ctx.textAlign = 'left';
 }
 
@@ -1214,7 +1343,7 @@ function drawPauseScreen() {
 
 // ---- Settings screen -------------------------------------------------------
 
-const _SETTINGS_LABELS = ['Motion Blur', 'Film Grain', 'Auto FPS', 'Volume', 'WebGL Road', '← BACK'];
+const _SETTINGS_LABELS = ['Motion Blur', 'Film Grain', 'Auto FPS', 'Volume', 'WebGL Road', 'Traffic', '← BACK'];
 
 function drawSettingsScreen() {
   const w = WIDTH, h = HEIGHT;
@@ -1247,6 +1376,7 @@ function drawSettingsScreen() {
     if (i === 4) val = isWebGLSupported()
       ? (settings.webglRoad ? 'ON' : 'OFF')
       : 'NOT SUPPORTED';
+    if (i === 5) val = settings.trafficEnabled ? 'ON' : 'OFF';
     if (val) {
       ctx.textAlign = 'right'; ctx.fillStyle = sel ? '#ffe44d' : 'rgba(255,228,77,0.60)';
       ctx.fillText(val, px + pw - 18, iy);

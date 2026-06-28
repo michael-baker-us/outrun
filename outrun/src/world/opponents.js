@@ -2,7 +2,7 @@
 // Positioned with the same per-segment projection cache the road uses,
 // so they sit correctly on curves. Collision slows and nudges the player.
 
-import { SEGMENT_LENGTH, TRACK_LENGTH, DRAW_DISTANCE, projectObject, fogAlpha } from './road.js';
+import { SEGMENT_LENGTH, TRACK_LENGTH, DRAW_DISTANCE, projectObject, fogAlpha } from '../rendering/road.js';
 import { drawCar3D, drawBrakeLights, drawTailLightGlow, startSpinOut, SPIN_TRIGGER_SPEED, VEHICLE_SHAPES } from './car.js';
 
 export const OPPONENT_COLORS = ['#2266cc', '#cccc22', '#22aa55', '#aa44cc', '#ee7711'];

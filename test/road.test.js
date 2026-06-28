@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { makeRng, buildSegments, SEGMENT_LENGTH, NUM_SEGMENTS, TRACK_LENGTH } from '../outrun/road.js';
+import { makeRng, buildSegments, SEGMENT_LENGTH, NUM_SEGMENTS, TRACK_LENGTH } from '../outrun/src/rendering/road.js';
 
 describe('makeRng (Mulberry32)', () => {
   test('same seed produces same sequence', () => {
