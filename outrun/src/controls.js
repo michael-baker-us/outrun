@@ -2,8 +2,9 @@
 // `keys` object the keyboard uses. Also polls the Gamepad API at ~60 Hz.
 
 import { keys, setTiltSteer } from './world/car.js';
-import { startGame, getState } from './core/game.js';
+import { startGame, getState, handleCanvasTap } from './core/game.js';
 import { unlockAudio } from './systems/audio.js';
+import { WIDTH, HEIGHT } from './rendering/renderer.js';
 
 // ---- Tilt steering --------------------------------------------------------
 
@@ -149,9 +150,13 @@ export function initControls() {
   const gameCanvas = document.getElementById('game');
   if (gameCanvas) {
     gameCanvas.addEventListener('pointerdown', (e) => {
-      unlockAudio();
       const state = getState();
-      if (state === 'gameover' || state === 'title') { e.preventDefault(); startGame(); }
+      if (state !== 'title' && state !== 'vehicleSelect' && state !== 'gameover') return;
+      e.preventDefault();
+      const rect = gameCanvas.getBoundingClientRect();
+      const lx = (e.clientX - rect.left) / rect.width  * WIDTH;
+      const ly = (e.clientY - rect.top)  / rect.height * HEIGHT;
+      handleCanvasTap(lx, ly);
     });
   }
 

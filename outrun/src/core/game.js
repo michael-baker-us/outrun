@@ -89,6 +89,74 @@ const _SL_DISTS  = Array.from({ length: _SL_COUNT }, (_, i) => 82 + (i * 31 % 52
 // controls.js imports getState from game.js — delegate to the state machine
 export function getState() { return getGameState(); }
 
+// Hit-test a pointer tap in logical (800×500) coordinates against the current
+// screen and dispatch the appropriate action. Called by controls.js after
+// translating CSS pointer coords → logical coords.
+export function handleCanvasTap(lx, ly) {
+  const state = getGameState();
+  unlockAudio();
+
+  if (state === 'title') {
+    // Stage selector band (includes label, name, and dots)
+    if (ly >= 140 && ly < 250) {
+      if (lx < WIDTH / 2) {
+        _selectedStage = (_selectedStage - 1 + STAGES.length) % STAGES.length;
+      } else {
+        _selectedStage = (_selectedStage + 1) % STAGES.length;
+      }
+      _rebuildOpponents();
+      return;
+    }
+    // Difficulty band
+    if (ly >= 250 && ly < 310) {
+      const diffs = Object.keys(DIFFICULTY);
+      const idx = diffs.indexOf(settings.difficulty);
+      settings.difficulty = diffs[(idx + 1) % diffs.length];
+      _saveSettings();
+      return;
+    }
+    // Vehicle hint band (only meaningful for non-special stages)
+    if (ly >= 305 && ly < 330) {
+      const selStage = STAGES[_selectedStage];
+      if (!selStage.special) { _menuIdx = 0; setGameState('vehicleSelect'); }
+      return;
+    }
+    // Boost toggle band
+    if (ly >= 325 && ly < 368) {
+      settings.boostsEnabled = !settings.boostsEnabled;
+      _saveSettings();
+      return;
+    }
+    // Catch-all: start game
+    startGame();
+    return;
+  }
+
+  if (state === 'vehicleSelect') {
+    const selStage = STAGES[_selectedStage];
+    if (!selStage.special) {
+      if (lx < WIDTH * 0.35) {
+        _vehicleSelectIdx = (_vehicleSelectIdx - 1 + PLAYER_VEHICLES.length) % PLAYER_VEHICLES.length;
+        _saveSettings();
+        return;
+      }
+      if (lx > WIDTH * 0.65) {
+        _vehicleSelectIdx = (_vehicleSelectIdx + 1) % PLAYER_VEHICLES.length;
+        _saveSettings();
+        return;
+      }
+    }
+    // Center tap or special-stage tap: back to title
+    setGameState('title');
+    return;
+  }
+
+  if (state === 'gameover') {
+    startGame();
+    return;
+  }
+}
+
 // ---- Public API -------------------------------------------------------------
 
 export function startGame() {

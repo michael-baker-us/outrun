@@ -19,6 +19,8 @@ For mobile/tilt features the page must also be served over **HTTPS** (e.g. GitHu
 
 Replay a specific track layout by appending `?seed=<n>` to the URL. The current seed is printed to the console on each load and rendered in the bottom-left corner of the canvas.
 
+Enable the **WebGL road renderer** with `?renderer=webgl` (or toggle "WebGL Road" in the Settings screen during play). Falls back to Canvas 2D automatically if WebGL2 is unsupported.
+
 Toggle the **debug overlay** with the backtick key `` ` ``, or force it on with `?debug=1`. It shows FPS, frame ms, physics steps/frame, segment and sprite counts, live car state, current TOD phase, and active weather.
 
 Dev shortcuts (active during play): **T** = advance TOD phase by 10%, **W** = cycle weather (clear → rain → clear).
@@ -26,11 +28,13 @@ Dev shortcuts (active during play): **T** = advance TOD phase by 10%, **W** = cy
 ## Running Tests
 
 ```bash
-npm test          # run once
-npm run test:watch  # watch mode
+npm test                              # run once
+npm run test:watch                    # watch mode
+npx vitest run test/road.test.js      # single test file
+npx vitest run -t "specific test name"  # single test by name
 ```
 
-Tests are in `test/` and cover pure game logic (road generation, car physics, collision detection). No browser required — Vitest runs them in Node.
+Tests are in `test/` and cover pure game logic (road generation, car physics, collision detection, state machines, storage, weather, stages). No browser required — Vitest runs them in Node.
 
 ## Architecture
 
@@ -38,73 +42,77 @@ The game is vanilla JS with **native ES modules** (`<script type="module">`). En
 
 ### Module graph
 
+Source files are organized under `outrun/src/` into four subdirectories. Entry point is `outrun/main.js`.
+
 ```
 main.js
-├── game.js
-│   ├── renderer.js     (back-buffer + DPR-scaled display canvas + ghost for motion blur)
-│   ├── palette.js      (all colour constants + 4 TOD stage palettes + applyTODPalette())
-│   ├── tod.js     →    palette.js, sky.js (3-min cycle, nightFactor, T-key shortcut)
-│   ├── weather.js      (rain drops, wet road, grip/fog modifiers, W-key shortcut)
-│   ├── settings.js     (effect toggles: motionBlur, filmGrain, bloom, autoDowngrade, volume)
-│   ├── gamestate.js    (state machine: title/playing/paused/settings/gameover)
-│   ├── audio.js        (WebAudio: engine drone, checkpoint/crash SFX, ambient music)
-│   ├── storage.js      (localStorage: high scores, settings, last seed)
-│   ├── stage.js        (COAST/DESERT/CITY biomes — road colour overrides, traffic density)
-│   ├── sky.js     →    palette.js (starfield, moon, sun fade, parallax mountains)
-│   ├── road.js    →    palette.js
-│   ├── assets.js       (AssetManager — async load, 404 fallback, progress)
-│   ├── sprites.js      (procedural sprite pre-rendering — pine/palm/rock/etc.)
-│   ├── car.js          (physics, input, car renderer, VEHICLE_SHAPES, gripMultiplier)
-│   ├── particles.js    (pooled particle system — smoke/dust/sparks/exhaust)
-│   ├── scenery.js  →   road.js, sprites.js
-│   ├── checkpoint.js → road.js
-│   ├── opponents.js →  road.js, car.js
-│   └── debug.js        (FPS overlay, backtick toggle, getFPS() for auto-downgrade)
-└── controls.js →       car.js, game.js, audio.js
+├── src/core/game.js         (main loop, render layers, HUD, attract mode, screen overlays)
+│   ├── src/rendering/renderer.js    (back-buffer + DPR-scaled display canvas + ghost for motion blur)
+│   ├── src/rendering/palette.js     (all colour constants + 4 TOD stage palettes + applyTODPalette())
+│   ├── src/systems/tod.js      →    palette.js, sky.js (3-min cycle, nightFactor, T-key shortcut)
+│   ├── src/systems/weather.js       (rain drops, wet road, grip/fog modifiers, W-key shortcut)
+│   ├── src/core/settings.js         (effect toggles: motionBlur, filmGrain, bloom, autoDowngrade, volume, webglRoad)
+│   ├── src/core/gamestate.js        (state machine: title/playing/paused/settings/gameover)
+│   ├── src/systems/audio.js         (WebAudio: engine drone, checkpoint/crash SFX, ambient music)
+│   ├── src/core/storage.js          (localStorage: high scores, settings, last seed)
+│   ├── src/world/stage.js           (COAST/DESERT/CITY biomes — road colour overrides, traffic density)
+│   ├── src/rendering/sky.js    →    palette.js (starfield, moon, sun fade, parallax mountains)
+│   ├── src/rendering/road.js   →    palette.js
+│   ├── src/rendering/webgl-road.js → road.js, palette.js (WebGL2 hybrid — road geometry only)
+│   ├── src/world/assets.js          (AssetManager — async load, 404 fallback, progress)
+│   ├── src/rendering/sprites.js     (procedural sprite pre-rendering — pine/palm/rock/etc.)
+│   ├── src/world/car.js             (physics, input, car renderer, VEHICLE_SHAPES, gripMultiplier)
+│   ├── src/rendering/particles.js   (pooled particle system — smoke/dust/sparks/exhaust)
+│   ├── src/rendering/scenery.js →   road.js, sprites.js
+│   ├── src/world/checkpoint.js →    road.js
+│   ├── src/world/opponents.js  →    road.js, car.js
+│   └── src/debug.js                 (FPS overlay, backtick toggle, getFPS() for auto-downgrade)
+└── src/controls.js →       car.js, game.js, audio.js
 ```
 
-No circular dependencies. `debug.js` and `audio.js` are browser-only and never imported by tests.
+No circular dependencies. `src/debug.js` and `src/systems/audio.js` are browser-only and never imported by tests.
+
+### WebGL road renderer
+
+`src/rendering/webgl-road.js` is a hybrid WebGL2 renderer for the road layer only. All other layers (sky, scenery, HUD, particles) remain on Canvas 2D. It batches up to ~5046 vertices (grass bands, shoulders, rumble strips, road surface, lane dashes for 120 segments) into a single `gl.drawArrays(TRIANGLES)` call via a pre-allocated `Float32Array` VBO updated with `gl.bufferSubData` each frame. The WebGL canvas (transparent above the road) is composited onto the 2D back-buffer via `ctx.drawImage()`. Initialized lazily on first toggle — zero overhead when disabled. GLSL fog via `mix(v_col, u_fog_col, v_fog)` matches the Canvas 2D fog exactly.
 
 ### Key exports
 
-| Symbol | Module | Used by |
+| Symbol | Module (under `src/`) | Used by |
 |---|---|---|
-| `segmentProjections[]` | `road.js` | `scenery.js` (exported array ref — mutations visible to all holders) |
-| `projectObject(dz, offset)` | `road.js` | `checkpoint.js`, `opponents.js` |
-| `projectRoad(segs, pos, playerX, W, H)` | `road.js` | `game.js` (projection pre-pass in `render()`) |
-| `drawRoad(ctx, segs, W, H)` | `road.js` | `game.js` (draw-only pass, no projection) |
-| `fogAlpha(dz)` | `road.js` | `scenery.js`, `opponents.js` (sprite/car depth fade) |
-| `getHorizonCurveX()` | `road.js` | `game.js` → `sky.js` (parallax scroll offset) |
-| `SEGMENT_LENGTH`, `NUM_SEGMENTS`, `TRACK_LENGTH`, `DRAW_DISTANCE` | `road.js` | `game.js`, `opponents.js` |
-| `makeRng(seed)` | `road.js` | tests |
-| `buildSegments(seed)` | `road.js` | `game.js`, tests |
-| `drawBackground(ctx, W, H, curveX, nightFactor)` | `sky.js` | `game.js` (sky LAYER) |
-| `invalidateSkyGradient()` | `sky.js` | `tod.js` (called after every palette mutation) |
-| `PALETTES`, `applyTODPalette(phase)` | `palette.js` | `tod.js` |
-| `updateTOD(dt)`, `getNightFactor()`, `setTODPhase(p)` | `tod.js` | `game.js` |
-| `setWeather(mode)`, `getGripMultiplier()`, `drawWeather(ctx,W,H)` | `weather.js` | `game.js` |
-| `captureGhost()`, `getGhostCanvas()` | `renderer.js` | `game.js` (motion blur) |
-| `settings` | `settings.js` | `game.js` (effect toggles, auto-downgrade) |
-| `getFPS()` | `debug.js` | `game.js` (auto-downgrade threshold check) |
-| `CAR`, `keys{}` | `car.js` | `game.js`, `controls.js` |
-| `setTiltSteer(v)` | `car.js` | `controls.js` (can't assign a `let` across module boundary) |
-| `VEHICLE_SHAPES` | `car.js` | `opponents.js` (shape table for sedan/truck/etc.) |
-| `SPIN_TRIGGER_SPEED`, `startSpinOut()` | `car.js` | `opponents.js`, tests |
-| `drawCar3D(ctx, cx, by, w, color, type)` | `car.js` | `opponents.js` |
-| `drawBrakeLights(ctx, cx, by, w, type)` | `car.js` | `opponents.js`, `game.js` |
-| `drawTailLightGlow(ctx, cx, by, w, type, nf)` | `car.js` | `opponents.js` (night glow) |
-| `emitSmoke/emitDust/emitSparks/emitExhaust` | `particles.js` | `game.js` |
-| `updateParticles(dt)`, `drawParticles(ctx)` | `particles.js` | `game.js` |
-| `resetParticles()`, `getParticleCount()` | `particles.js` | `game.js` |
-| `getLastSpriteCount()` | `scenery.js` | `game.js` (debug overlay) |
-| `init()`, `resetGame()`, `startGame()`, `getState()` | `game.js` | `main.js`, `controls.js` |
+| `segmentProjections[]`, `frameSegs[]` | `rendering/road.js` | `scenery.js`; `frameSegs` also by `webgl-road.js` |
+| `projectObject(dz, offset)` | `rendering/road.js` | `world/checkpoint.js`, `world/opponents.js` |
+| `projectRoad(segs, pos, playerX, W, H)` | `rendering/road.js` | `core/game.js` (projection pre-pass) |
+| `drawRoad(ctx, segs, W, H)` | `rendering/road.js` | `core/game.js` (draw-only pass) |
+| `fogAlpha(dz)` | `rendering/road.js` | `rendering/scenery.js`, `world/opponents.js` |
+| `getHorizonCurveX()` | `rendering/road.js` | `core/game.js` → `rendering/sky.js` |
+| `SEGMENT_LENGTH`, `TRACK_LENGTH`, `DRAW_DISTANCE` | `rendering/road.js` | `core/game.js`, `world/opponents.js` |
+| `makeRng(seed)`, `buildSegments(seed)` | `rendering/road.js` | `core/game.js`, tests |
+| `drawBackground(ctx, W, H, curveX, nightFactor)` | `rendering/sky.js` | `core/game.js` |
+| `invalidateSkyGradient()` | `rendering/sky.js` | `systems/tod.js` (after every palette mutation) |
+| `PALETTES`, `applyTODPalette(phase)` | `rendering/palette.js` | `systems/tod.js` |
+| `updateTOD(dt)`, `getNightFactor()`, `setTODPhase(p)` | `systems/tod.js` | `core/game.js` |
+| `setWeather(mode)`, `getGripMultiplier()`, `drawWeather(ctx,W,H)` | `systems/weather.js` | `core/game.js` |
+| `captureGhost()`, `getGhostCanvas()` | `rendering/renderer.js` | `core/game.js` (motion blur) |
+| `isWebGLSupported()`, `initWebGL()`, `drawRoadGL()`, `getWebGLCanvas()` | `rendering/webgl-road.js` | `core/game.js` |
+| `settings` | `core/settings.js` | `core/game.js` (effect toggles, auto-downgrade, webglRoad) |
+| `getFPS()` | `debug.js` | `core/game.js` (auto-downgrade threshold) |
+| `CAR`, `keys{}` | `world/car.js` | `core/game.js`, `controls.js` |
+| `setTiltSteer(v)` | `world/car.js` | `controls.js` (can't assign a `let` across module boundary) |
+| `VEHICLE_SHAPES` | `world/car.js` | `world/opponents.js` |
+| `SPIN_TRIGGER_SPEED`, `startSpinOut()` | `world/car.js` | `world/opponents.js`, tests |
+| `drawCar3D`, `drawBrakeLights`, `drawTailLightGlow` | `world/car.js` | `world/opponents.js`, `core/game.js` |
+| `emitSmoke/emitDust/emitSparks/emitExhaust` | `rendering/particles.js` | `core/game.js` |
+| `updateParticles(dt)`, `drawParticles(ctx)`, `resetParticles()`, `getParticleCount()` | `rendering/particles.js` | `core/game.js` |
+| `getLastSpriteCount()` | `rendering/scenery.js` | `core/game.js` (debug overlay) |
+| `init()`, `resetGame()`, `startGame()`, `getState()` | `core/game.js` | `main.js`, `controls.js` |
 | `initControls()` | `controls.js` | `main.js` |
-| `getGameState()`, `setGameState(s)`, `onEnterState`, `onExitState` | `gamestate.js` | `game.js` |
-| `unlockAudio()`, `updateEngineSound(sf)`, `playSFX(key)` | `audio.js` | `game.js`, `controls.js` |
-| `startMusic()`, `stopMusic()`, `setMasterVolume(v)` | `audio.js` | `game.js` |
-| `addHighScore(score)`, `getHighScores()`, `isHighScore(score)` | `storage.js` | `game.js` |
-| `saveSettings(s)`, `loadSettings()`, `saveLastSeed(n)` | `storage.js` | `game.js` |
-| `STAGES[]`, `getStageIndex(dist)`, `getStage(dist)` | `stage.js` | `game.js`, tests |
+| `getGameState()`, `setGameState(s)`, `onEnterState`, `onExitState` | `core/gamestate.js` | `core/game.js` |
+| `unlockAudio()`, `updateEngineSound(sf)`, `playSFX(key)` | `systems/audio.js` | `core/game.js`, `controls.js` |
+| `startMusic()`, `stopMusic()`, `setMasterVolume(v)` | `systems/audio.js` | `core/game.js` |
+| `addHighScore(score)`, `getHighScores()`, `isHighScore(score)` | `core/storage.js` | `core/game.js` |
+| `saveSettings(s)`, `loadSettings()`, `saveLastSeed(n)` | `core/storage.js` | `core/game.js` |
+| `STAGES[]`, `getStageIndex(dist)`, `getStage(dist)` | `world/stage.js` | `core/game.js`, tests |
 
 ### Physics loop (fixed timestep)
 
@@ -188,3 +196,7 @@ The title screen renders a **live attract mode** — the world animates at 2200 
 ### Mobile / tilt controls
 
 `controls.js` exports `initControls()`, called from `main.js` on window load. It adds `touch` or `tilt` CSS classes to `<body>` to show/hide the on-screen buttons and tilt meter. It bridges pointer events to the same `keys{}` object the keyboard uses, so `updateCar()` in `car.js` is unchanged. Tilt reads `DeviceMotionEvent.accelerationIncludingGravity`, remapped per `screen.orientation.angle` to handle all four landscape/portrait orientations. A `setInterval(16 ms)` polls `navigator.getGamepads()` and writes gamepad axes/buttons directly into `keys` so the car responds to a controller with no changes to physics code.
+
+### Roadmap
+
+`MODERNIZATION_PLAN.md` is the authoritative planning document. It tracks 7 phases (all complete as of June 2026): module conversion, renderer pipeline, world fidelity, sprites/asset manager, car fidelity, lighting/TOD/weather, game systems/audio/UX, and WebGL2 renderer. Check it for phase acceptance criteria, locked architectural decisions, and the progress log before proposing structural changes.
