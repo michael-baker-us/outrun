@@ -7,10 +7,11 @@ function makeCar(overrides = {}) {
     x: 0,
     speed: 0,
     maxSpeed: 9000,
-    accel: 14000,
+    accel: 4800,
     brake: 26000,
     decel: 7000,
     steerRate: 1.6,
+    steerDrag: 2000,
     offRoadMax: 3000,
     offRoadDrag: 22000,
     spinTime: 0,
@@ -85,7 +86,7 @@ describe('off-road drag', () => {
   });
 
   test('off-road drag bleeds speed even while accelerating', () => {
-    // offRoadDrag (22000) > accel (14000) so net bleed above offRoadMax
+    // offRoadDrag (22000) >> effective accel at high speed, so net bleed above offRoadMax
     const car = makeCar({ x: 1.5, speed: 8000 });
     updateCar(car, 0.1);
     expect(car.speed).toBeLessThan(8000);

@@ -15,10 +15,11 @@ export const CAR = {
   x:              0,
   speed:          0,
   maxSpeed:       9000,
-  accel:          14000,
+  accel:          4800,   // lower than raw feels; taper in updateCar makes low-end punchy
   brake:          26000,
   decel:          7000,
   steerRate:      1.6,
+  steerDrag:      2000,   // speed scrubbed per second at full steer lock (proportional to sf)
   offRoadMax:     3000,
   offRoadDrag:    22000,
   spinTime:       0,
@@ -87,9 +88,21 @@ export function updateCar(car, dt) {
   car.steerInput = Math.max(-1, Math.min(1, rawSteer));
 
   const grip = car.gripMultiplier ?? 1;
-  if (keys['ArrowUp'])  car.speed = Math.min(car.speed + car.accel * dt, car.maxSpeed);
-  else if (car.braking) car.speed = Math.max(car.speed - car.brake * grip * dt, 0);
-  else                  car.speed = Math.max(car.speed - car.decel * dt, 0);
+  if (keys['ArrowUp']) {
+    // Taper acceleration so low-end feels punchy but top speed is hard-earned (~3.5 s 0→max)
+    const sf = car.speed / car.maxSpeed;
+    car.speed = Math.min(car.speed + car.accel * (1 - sf * 0.80) * dt, car.maxSpeed);
+  } else if (car.braking) {
+    car.speed = Math.max(car.speed - car.brake * grip * dt, 0);
+  } else {
+    car.speed = Math.max(car.speed - car.decel * dt, 0);
+  }
+
+  // Cornering drag: turning scrubs speed proportional to steer amount × current speed fraction
+  if (car.steerInput !== 0 && car.steerDrag) {
+    const sf = car.speed / car.maxSpeed;
+    car.speed = Math.max(0, car.speed - Math.abs(car.steerInput) * car.steerDrag * sf * dt);
+  }
 
   const steer = car.steerRate * grip * dt * (car.speed / car.maxSpeed);
   if (keys['ArrowLeft'])  car.x -= steer;

@@ -1,12 +1,10 @@
-// Game-wide effect toggles. Mutated by the auto-downgrade system and keyboard
-// shortcuts (T = advance TOD, W = cycle weather). Will be persisted to
-// localStorage in Phase 6.
+// Game-wide effect toggles. Persisted to localStorage in Phase 6.
+// Mutated by auto-downgrade, settings screen, and keyboard shortcuts.
 
 export const settings = {
-  weather:       'clear',  // 'clear' | 'rain'
-  timeOfDay:     'auto',   // 'auto' | fixed phase passed to setTODPhase()
   motionBlur:    true,
   filmGrain:     true,
   bloom:         true,
   autoDowngrade: true,
+  volume:        0.55,
 };

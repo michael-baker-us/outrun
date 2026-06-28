@@ -15,6 +15,38 @@ import { getSprite } from './sprites.js';
 // Minimum road half-width before skipping sprites (avoids flicker at horizon)
 const SCENERY_MIN_ROADW = 18;
 
+// Deterministic per-segment hash for variety within biome remaps.
+const _sh = i => (((i * 2654435761) >>> 0) + 1234567891) >>> 0;
+
+// Per-biome sprite remapping applied at draw time so the same baked segment
+// data renders differently in COAST vs DESERT vs CITY.
+// stageIdx: 0=COAST, 1=DESERT, 2=CITY
+function _stageRemap(type, stageIdx, segIdx) {
+  if (stageIdx === 0) { // COAST: Pacific coast — palms, dune grass, lifeguard towers
+    const h = _sh(segIdx);
+    if (type === 'pine')        return (h & 7) < 3 ? 'seagrass' : 'palm';
+    if (type === 'bush')        return (h & 3) < 2 ? 'seagrass' : 'bush';
+    if (type === 'billboard-2') return 'lifeguard';
+    return type;
+  }
+
+  if (stageIdx === 1) { // DESERT: saguaro cacti, sparse scrub, rocky
+    if (type === 'pine')   return 'cactus'; // forest pines → saguaro cacti
+    if (type === 'poplar') return 'bush';   // tall poplars → low desert scrub
+    // palm, rock, bush, billboards stay — fits sparse desert highway feel
+    return type;
+  }
+
+  if (stageIdx === 2) { // CITY: buildings, street trees, urban planters
+    if (type === 'pine')  return `building-${_sh(segIdx) % 3}`; // buildings line the road
+    if (type === 'palm')  return 'poplar';   // street trees instead of tropical palms
+    if (type === 'rock')  return 'bush';     // planters instead of boulders
+    return type;
+  }
+
+  return type;
+}
+
 // How wide each sprite type is, as a multiple of the road half-width.
 // Height is derived from the pre-rendered canvas aspect ratio.
 const SPRITE_WIDTHS = {
@@ -26,6 +58,12 @@ const SPRITE_WIDTHS = {
   'billboard-0': 2.8,
   'billboard-1': 2.8,
   'billboard-2': 2.8,
+  cactus:        1.4,
+  'building-0':  3.0,
+  'building-1':  3.5,
+  'building-2':  2.8,
+  seagrass:      2.2,
+  lifeguard:     2.0,
 };
 
 // Ground shadow ellipse x-radius as a multiple of road half-width.
@@ -38,13 +76,20 @@ const SHADOW_WX = {
   'billboard-0': 0.70,
   'billboard-1': 0.70,
   'billboard-2': 0.70,
+  cactus:        0.55,
+  'building-0':  1.40,
+  'building-1':  1.65,
+  'building-2':  1.30,
+  seagrass:      0.80,
+  lifeguard:     0.85,
 };
 
 let _lastSpriteCount = 0;
 export function getLastSpriteCount() { return _lastSpriteCount; }
 
 // `assets` is the game.js AssetManager instance. May be null during init.
-export function drawScenery(ctx, segments, assets) {
+// `stageIdx` is 0/1/2 for COAST/DESERT/CITY — controls biome sprite remapping.
+export function drawScenery(ctx, segments, assets, stageIdx = 0) {
   _lastSpriteCount = 0;
 
   for (let i = segmentProjections.length - 1; i >= 0; i--) {
@@ -63,11 +108,12 @@ export function drawScenery(ctx, segments, assets) {
     ctx.clip();
 
     for (const sprite of seg.sprites) {
+      const type = _stageRemap(sprite.type, stageIdx, proj.segIdx);
       const sx = proj.roadX + sprite.offset * proj.roadW;
       const sy = proj.screenY;
 
-      _drawShadow(ctx, sprite.type, sx, sy, proj.roadW);
-      _drawSprite(ctx, assets, sprite.type, sx, sy, proj.roadW);
+      _drawShadow(ctx, type, sx, sy, proj.roadW);
+      _drawSprite(ctx, assets, type, sx, sy, proj.roadW);
       _lastSpriteCount++;
     }
 

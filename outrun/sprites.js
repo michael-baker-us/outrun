@@ -16,6 +16,12 @@ export function buildSprites() {
   _cache.set('billboard-0', makeBillboard(0));
   _cache.set('billboard-1', makeBillboard(1));
   _cache.set('billboard-2', makeBillboard(2));
+  _cache.set('cactus',      makeCactus());
+  _cache.set('building-0',  makeBuilding(0));
+  _cache.set('building-1',  makeBuilding(1));
+  _cache.set('building-2',  makeBuilding(2));
+  _cache.set('seagrass',    makeSeagrass());
+  _cache.set('lifeguard',   makeLifeguard());
 }
 
 export function getSprite(key) { return _cache.get(key) ?? null; }
@@ -274,6 +280,201 @@ function makeBillboard(variant) {
   ctx.strokeStyle = 'rgba(0,0,0,0.35)';
   ctx.lineWidth = 2;
   ctx.strokeRect(6, 6, 128, 74);
+
+  return c;
+}
+
+// ---- Cactus (saguaro) --------------------------------------------------------
+// Two-armed desert cactus. Canvas: 60 × 180.
+
+function makeCactus() {
+  const [c, ctx] = mc(60, 180);
+
+  // Traces the full silhouette: trunk + left arm (higher) + right arm (lower).
+  // Rounded caps are patched on separately as top-semicircles.
+  function shape(col, tx, tw, la, lat, ra, rat) {
+    const tr = tx + tw, lw = tx - la, rw = ra - tr;
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.moveTo(tx, 180);
+    ctx.lineTo(tx, 80);   ctx.lineTo(la, 80);              // trunk down to left arm
+    ctx.lineTo(la, lat);  ctx.lineTo(tx, lat);              // up left arm, back to trunk
+    ctx.lineTo(tx, 6);
+    ctx.quadraticCurveTo(tx + tw / 2, 0, tr, 6);           // rounded trunk top
+    ctx.lineTo(tr, rat);  ctx.lineTo(ra, rat);              // down to right arm top
+    ctx.lineTo(ra, rat + 30); ctx.lineTo(tr, rat + 30);    // right arm body
+    ctx.lineTo(tr, 180);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.arc(la + lw / 2, lat, lw / 2, Math.PI, 0); ctx.fill(); // left cap
+    ctx.beginPath(); ctx.arc(ra - rw / 2, rat, rw / 2, Math.PI, 0); ctx.fill(); // right cap
+  }
+
+  shape('#1c4a0c', 17, 26,  3, 47, 57, 60); // dark outline/shadow
+  shape('#2a6814', 18, 24,  5, 48, 55, 61); // main body
+  ctx.fillStyle = '#3d8c22';
+  ctx.fillRect(38, 6, 4, 174); // highlight strip on trunk right face
+
+  return c;
+}
+
+// ---- City buildings ----------------------------------------------------------
+// Three architectural variants for the CITY biome.
+
+function makeBuilding(variant) {
+  const V = [
+    // 0: Glass tower — tall, blue-tinted, lots of windows
+    { w: 80,  h: 280, base: '#131e34', face: '#1e3058', lit: '#2a4880',
+      win: '#4a78aa', glint: '#88b4d8', winH: 5, rowH: 10, cols: 4 },
+    // 1: Concrete block — wide, grey, horizontal banding
+    { w: 100, h: 220, base: '#383838', face: '#585858', lit: '#6e6e6e',
+      win: '#3a5a78', glint: '#5e80a0', winH: 6, rowH: 13, cols: 5 },
+    // 2: Brick tower — brownish stone, stepped top
+    { w: 80,  h: 260, base: '#2e1a0c', face: '#4a2c18', lit: '#6a3e24',
+      win: '#4a6898', glint: '#7090c0', winH: 6, rowH: 12, cols: 3 },
+  ][variant % 3];
+
+  const [c, ctx] = mc(V.w, V.h);
+  const W = V.w, H = V.h;
+
+  // Shadow side (left ~20%)
+  ctx.fillStyle = V.base;
+  ctx.fillRect(0, 0, W, H);
+
+  // Main facade
+  ctx.fillStyle = V.face;
+  ctx.fillRect(W * 0.18, 0, W * 0.60, H);
+
+  // Lit side (right ~22%)
+  ctx.fillStyle = V.lit;
+  ctx.fillRect(W * 0.78, 0, W * 0.22, H);
+
+  // Window grid — deterministic on/off per cell so it doesn't flicker
+  const xStart = Math.round(W * 0.22);
+  const innerW = Math.round(W * 0.54);
+  const colW   = innerW / V.cols;
+  const winW   = Math.max(2, Math.round(colW * 0.55));
+  for (let row = 1; row * V.rowH < H - 8; row++) {
+    const y = H - row * V.rowH - 1;
+    for (let col = 0; col < V.cols; col++) {
+      const x    = Math.round(xStart + col * colW + (colW - winW) / 2);
+      const hash = (row * 13 + col * 7 + variant * 5) % 8;
+      ctx.fillStyle = hash > 1 ? V.win : V.base; // 75% windows lit
+      ctx.fillRect(x, Math.round(y), winW, V.winH);
+      if (hash > 4) { // glint on brightest windows
+        ctx.fillStyle = V.glint;
+        ctx.fillRect(x + 1, Math.round(y) + 1, Math.max(1, winW - 2), 2);
+      }
+    }
+  }
+
+  // Roofline detail per variant
+  if (variant === 0) {
+    // Slim antenna spire
+    ctx.fillStyle = V.lit;
+    ctx.fillRect(Math.round(W * 0.46), 0, Math.round(W * 0.08), 14);
+  } else if (variant === 1) {
+    // HVAC / rooftop plant room
+    ctx.fillStyle = V.base;
+    ctx.fillRect(Math.round(W * 0.18), 0, Math.round(W * 0.64), 14);
+    ctx.fillStyle = V.face;
+    ctx.fillRect(Math.round(W * 0.28), 0, Math.round(W * 0.44), 8);
+  } else {
+    // Stepped setbacks (art deco)
+    ctx.fillStyle = V.face;
+    ctx.fillRect(Math.round(W * 0.10), 0, Math.round(W * 0.80), 22);
+    ctx.fillRect(Math.round(W * 0.22), 0, Math.round(W * 0.56), 13);
+    ctx.fillRect(Math.round(W * 0.34), 0, Math.round(W * 0.32),  6);
+  }
+
+  return c;
+}
+
+// ---- Beach / sea grass -------------------------------------------------------
+// Wispy dune-grass clumps evoking a coastal roadside. Canvas: 80 × 50.
+
+function makeSeagrass() {
+  const [c, ctx] = mc(80, 50);
+  ctx.lineCap = 'round';
+
+  // [baseX, cpX, cpY, tipX, tipY, color]  — base Y is always 50 (canvas bottom)
+  const blades = [
+    [10,  8, 28,  4, 10, '#4e7022'],
+    [13, 15, 24, 20,  6, '#5e8228'],
+    [15, 18, 30, 22, 12, '#4a6a1e'],
+    [32, 28, 22, 24,  4, '#5e8228'],
+    [36, 36, 18, 38,  2, '#6a9030'],
+    [40, 44, 24, 50,  8, '#5e8228'],
+    [44, 48, 28, 54, 12, '#4e7022'],
+    [60, 56, 26, 52,  8, '#5e8228'],
+    [64, 64, 20, 66,  4, '#6a9030'],
+    [68, 72, 28, 76, 12, '#4e7022'],
+    [71, 74, 24, 78,  8, '#4a6a1e'],
+  ];
+
+  for (const [bx, cpx, cpy, tx, ty, col] of blades) {
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(bx, 50);
+    ctx.quadraticCurveTo(cpx, cpy, tx, ty);
+    ctx.stroke();
+  }
+
+  return c;
+}
+
+// ---- Lifeguard tower ---------------------------------------------------------
+// Iconic PCH lifeguard station: stilts, platform, red cabin, flag. Canvas: 80 × 150.
+
+function makeLifeguard() {
+  const [c, ctx] = mc(80, 150);
+
+  // Stilts
+  ctx.fillStyle = '#8a5820';
+  ctx.fillRect(14, 72, 6, 78); ctx.fillRect(60, 72, 6, 78);
+  ctx.fillRect(27, 80, 5, 70); ctx.fillRect(48, 80, 5, 70);
+
+  // Cross braces
+  ctx.strokeStyle = '#7a4e18'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(14, 95); ctx.lineTo(66, 132);
+  ctx.moveTo(66, 95); ctx.lineTo(14, 132);
+  ctx.stroke();
+
+  // Platform deck
+  ctx.fillStyle = '#b07830';
+  ctx.fillRect(8, 64, 64, 10);
+
+  // Railing — top rail + vertical balusters
+  ctx.strokeStyle = '#c88838'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(10, 56); ctx.lineTo(70, 56); ctx.stroke();
+  ctx.lineWidth = 2;
+  for (const x of [14, 22, 30, 38, 46, 54, 62]) {
+    ctx.beginPath(); ctx.moveTo(x, 56); ctx.lineTo(x, 72); ctx.stroke();
+  }
+
+  // Cabin body
+  ctx.fillStyle = '#c03010';
+  ctx.fillRect(10, 16, 60, 52);
+
+  // Front face highlight
+  ctx.fillStyle = '#d84020';
+  ctx.fillRect(12, 18, 56, 30);
+
+  // Observation window
+  ctx.fillStyle = '#0a1428';
+  ctx.fillRect(20, 26, 40, 22);
+  ctx.strokeStyle = '#c8c8c8'; ctx.lineWidth = 1.5;
+  ctx.strokeRect(20, 26, 40, 22);
+
+  // Roof overhang
+  ctx.fillStyle = '#a02010';
+  ctx.fillRect(6, 10, 68, 10);
+
+  // Flag pole + triangular flag
+  ctx.fillStyle = '#aaaaaa'; ctx.fillRect(38, 0, 3, 14);
+  ctx.fillStyle = '#ff3010';
+  ctx.beginPath(); ctx.moveTo(41, 1); ctx.lineTo(58, 7); ctx.lineTo(41, 13); ctx.closePath(); ctx.fill();
 
   return c;
 }

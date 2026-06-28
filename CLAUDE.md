@@ -45,7 +45,11 @@ main.js
 │   ├── palette.js      (all colour constants + 4 TOD stage palettes + applyTODPalette())
 │   ├── tod.js     →    palette.js, sky.js (3-min cycle, nightFactor, T-key shortcut)
 │   ├── weather.js      (rain drops, wet road, grip/fog modifiers, W-key shortcut)
-│   ├── settings.js     (effect toggles: motionBlur, filmGrain, bloom, autoDowngrade)
+│   ├── settings.js     (effect toggles: motionBlur, filmGrain, bloom, autoDowngrade, volume)
+│   ├── gamestate.js    (state machine: title/playing/paused/settings/gameover)
+│   ├── audio.js        (WebAudio: engine drone, checkpoint/crash SFX, ambient music)
+│   ├── storage.js      (localStorage: high scores, settings, last seed)
+│   ├── stage.js        (COAST/DESERT/CITY biomes — road colour overrides, traffic density)
 │   ├── sky.js     →    palette.js (starfield, moon, sun fade, parallax mountains)
 │   ├── road.js    →    palette.js
 │   ├── assets.js       (AssetManager — async load, 404 fallback, progress)
@@ -56,10 +60,10 @@ main.js
 │   ├── checkpoint.js → road.js
 │   ├── opponents.js →  road.js, car.js
 │   └── debug.js        (FPS overlay, backtick toggle, getFPS() for auto-downgrade)
-└── controls.js →       car.js, game.js
+└── controls.js →       car.js, game.js, audio.js
 ```
 
-No circular dependencies. `debug.js` is browser-only and never imported by tests.
+No circular dependencies. `debug.js` and `audio.js` are browser-only and never imported by tests.
 
 ### Key exports
 
@@ -93,8 +97,14 @@ No circular dependencies. `debug.js` is browser-only and never imported by tests
 | `updateParticles(dt)`, `drawParticles(ctx)` | `particles.js` | `game.js` |
 | `resetParticles()`, `getParticleCount()` | `particles.js` | `game.js` |
 | `getLastSpriteCount()` | `scenery.js` | `game.js` (debug overlay) |
-| `init()`, `resetGame()`, `getState()` | `game.js` | `main.js`, `controls.js` |
+| `init()`, `resetGame()`, `startGame()`, `getState()` | `game.js` | `main.js`, `controls.js` |
 | `initControls()` | `controls.js` | `main.js` |
+| `getGameState()`, `setGameState(s)`, `onEnterState`, `onExitState` | `gamestate.js` | `game.js` |
+| `unlockAudio()`, `updateEngineSound(sf)`, `playSFX(key)` | `audio.js` | `game.js`, `controls.js` |
+| `startMusic()`, `stopMusic()`, `setMasterVolume(v)` | `audio.js` | `game.js` |
+| `addHighScore(score)`, `getHighScores()`, `isHighScore(score)` | `storage.js` | `game.js` |
+| `saveSettings(s)`, `loadSettings()`, `saveLastSeed(n)` | `storage.js` | `game.js` |
+| `STAGES[]`, `getStageIndex(dist)`, `getStage(dist)` | `stage.js` | `game.js`, tests |
 
 ### Physics loop (fixed timestep)
 
@@ -130,10 +140,16 @@ loop(now):
 9. `drawCar()` — player car sprite at the bottom-center of the canvas.
 10. `drawSpeedFX()` — cached radial vignette + 14 animated speed-line streaks (>65% speed).
 11. `_drawMotionBlur()` — ghost canvas at low opacity (>72% speed, if `settings.motionBlur`).
-12. `drawHUD()` — time, score, speed, seed overlay.
+12. `drawHUD()` — time, score, speed, stage name, seed overlay (playing state only).
 13. `_drawFilmGrain()` — 96-px tiled noise canvas, updated at 20 fps (if `settings.filmGrain`).
-14. `drawGameOver()` — overlay (when `_state === 'gameover'`).
-15. `drawDebugOverlay()` — dev stats (hidden unless toggled).
+14. `drawDebugOverlay()` — dev stats (hidden unless toggled).
+
+**Post-layers overlays (drawn outside shake transform, state-gated):**
+
+- `drawTitleScreen()` — logo, blinking prompt, high scores, attract-mode world behind.
+- `drawPauseScreen()` — semi-transparent panel with RESUME / SETTINGS / QUIT items.
+- `drawSettingsScreen()` — Motion Blur / Film Grain / Auto FPS / Volume / BACK.
+- `drawGameOver()` — score, distance, stage, ★NEW HIGH SCORE if applicable.
 
 ### Pseudo-3D projection
 
@@ -151,6 +167,24 @@ Hill occlusion uses the `clip` field in each `segmentProjections` entry — the 
 
 `drawCarBody()` draws a gradient-shaded rear-view car onto an **offscreen canvas** (one per color). `drawCar3D()` blits that sprite scaled to the requested width. This avoids allocating gradients every frame, which caused GC hitches near traffic. `drawCarSpinning()` applies `ctx.scale(cos(angle), 1)` to fake yaw rotation.
 
+### Game state machine
+
+`gamestate.js` owns the current state (`'title'|'playing'|'paused'|'settings'|'gameover'`). Transitions fire `onExitState` → `onEnterState` callbacks. `game.js` drives transitions via keyboard and calls `setGameState()`. `controls.js` reads `getState()` (re-exported from `game.js`) to gate touch input.
+
+The title screen renders a **live attract mode** — the world animates at 2200 u/s on a separate `_attractZ` camera so the background looks dynamic before first play.
+
+### Biome / stage system
+
+`stage.js` defines 3 stages at distance thresholds 0 / 750 000 / 1 500 000 units (~15 checkpoints apart). Each stage may supply a `roadOverride` object (grass/surface/shoulder hex values) that `game.js` splices into `palette.road` each frame **after** `applyTODPalette()`, so biome colours stack on top of the TOD interpolation.
+
+### Audio
+
+`audio.js` creates an `AudioContext` lazily on the first user gesture (`unlockAudio()`). Engine sound is a sawtooth oscillator + square at 1.5× frequency, run through a lowpass filter; frequency and gain are mapped to `CAR.speed / CAR.maxSpeed` via `setTargetAtTime`. Checkpoint chime = 3-note ascending arpeggio; crash = frequency-ramping sawtooth. Ambient music = 3 sine oscillators (A-minor chord) mixed at low volume during gameplay.
+
+### Persistence
+
+`storage.js` wraps `localStorage` with an injectable `store` argument for unit tests. High scores are kept as a JSON array (top 5, sorted descending). Settings (motionBlur, filmGrain, autoDowngrade, volume) are saved whenever the settings screen changes a value.
+
 ### Mobile / tilt controls
 
-`controls.js` exports `initControls()`, called from `main.js` on window load. It adds `touch` or `tilt` CSS classes to `<body>` to show/hide the on-screen buttons and tilt meter. It bridges pointer events to the same `keys{}` object the keyboard uses, so `updateCar()` in `car.js` is unchanged. Tilt reads `DeviceMotionEvent.accelerationIncludingGravity`, remapped per `screen.orientation.angle` to handle all four landscape/portrait orientations.
+`controls.js` exports `initControls()`, called from `main.js` on window load. It adds `touch` or `tilt` CSS classes to `<body>` to show/hide the on-screen buttons and tilt meter. It bridges pointer events to the same `keys{}` object the keyboard uses, so `updateCar()` in `car.js` is unchanged. Tilt reads `DeviceMotionEvent.accelerationIncludingGravity`, remapped per `screen.orientation.angle` to handle all four landscape/portrait orientations. A `setInterval(16 ms)` polls `navigator.getGamepads()` and writes gamepad axes/buttons directly into `keys` so the car responds to a controller with no changes to physics code.

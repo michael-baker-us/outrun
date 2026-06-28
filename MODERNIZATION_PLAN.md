@@ -252,27 +252,27 @@ toggle cleanly and hold the FPS budget (or auto-downgrade).
 ---
 
 ### Phase 6 — Game systems, audio & UX
-**Status:** not started
+**Status:** done
 **Goal:** Turn the tech demo into a *game* — the "everything you'd expect."
 
 **Why / what you learn:** WebAudio, state/UI management, persistence, content design.
 
-- [ ] **Audio engine (WebAudio):** RPM/speed-linked **engine drone**, skid/crash/
+- [x] **Audio engine (WebAudio):** RPM/speed-linked **engine drone**, skid/crash/
       collision SFX, checkpoint chime, UI clicks; **music** track(s) with mute/volume.
       All through the AssetManager with silent fallback. Respect autoplay-unlock
       (start audio on first input).
-- [ ] **Modern HUD:** custom web font, animated speedometer (dial or bar), lap/
+- [x] **Modern HUD:** custom web font, animated speedometer (dial or bar), lap/
       stage info, animated checkpoint banner, optional **mini-map / track-progress**
       bar. Replace monospace overlays.
-- [ ] **Screens & flow:** title/attract screen, loading screen (uses asset
+- [x] **Screens & flow:** title/attract screen, loading screen (uses asset
       progress), pause menu, settings (graphics/audio/controls), game-over with
       stats. Proper `GameState` machine replacing the `'playing'|'gameover'` flag.
-- [ ] **Persistence (localStorage):** high scores, best distance per stage, chosen
+- [x] **Persistence (localStorage):** high scores, best distance per stage, chosen
       settings, last seed.
-- [ ] **Content / stages:** multiple **biomes/stages** (coast, desert, city,
+- [x] **Content / stages:** multiple **biomes/stages** (coast, desert, city,
       mountains, night) selected as you progress; optional **branching forks** à la
       classic OutRun; difficulty/traffic-density scaling. Reuse seeded generation.
-- [ ] **Controls:** gamepad support (Gamepad API) alongside keyboard/touch/tilt;
+- [x] **Controls:** gamepad support (Gamepad API) alongside keyboard/touch/tilt;
       remappable keys in settings.
 
 **Acceptance:** boot → title → play → pause/settings → game-over → high-score
@@ -342,6 +342,8 @@ Per the user's cross-project standards — fold these in continuously, don't def
 ## 6. Progress Log
 
 > Newest first. One short entry per session: what landed, FPS/notes, what's next.
+
+- **2026-06-27 — Phase 6 complete.** New `gamestate.js` (state machine: title/playing/paused/settings/gameover; `setGameState`, `onEnterState`, `onExitState`). New `audio.js` (WebAudio procedural synth: sawtooth+square engine drone RPM-mapped 80→400 Hz, lowpass filter, A-minor ambient music chord; `playSFX('checkpoint'|'crash')` one-shots; `unlockAudio()` deferred to first user gesture; `setMasterVolume()`). New `storage.js` (localStorage wrapper with injectable backend for tests: `addHighScore`, `getHighScores`, top-5 sorted, `saveSettings/loadSettings`, `saveLastSeed/loadLastSeed`). New `stage.js` (COAST/DESERT/CITY biomes with road color overrides; thresholds at 0/750k/1.5M distance units; `getStageIndex`, `getStage`). `controls.js`: gamepad polling via `setInterval(16ms)` — left-stick axis + D-pad → ArrowLeft/Right, face/trigger buttons → ArrowUp/Down; `unlockAudio()` on all touch events; `startGame()` on tap in title/gameover states. `game.js`: state machine replaces bare `_state` flag; title screen with attract mode (world renders live behind overlay at 2200 u/s); pause/settings/gameover screens with rounded-rect panels and keyboard navigation (↑↓ move, ←→ adjust volume, ENTER select, ESC back); stage colour overrides applied after TOD each frame; checkpoint/crash audio hooked; high score saved on game over; settings persisted to localStorage; `startGame()` exported. HUD gains stage name (top-centre). Game over shows distance/stage/★NEW HIGH SCORE. `settings.js` cleaned up (dropped unused weather/timeOfDay, added `volume`). 106 tests green (9 gamestate, 13 storage, 14 stage tests new). Next: Phase 7 (WebGL2 renderer — stretch).
 
 - **2026-06-27 — Phase 5 complete.** New `settings.js` (motionBlur/filmGrain/bloom/weather/autoDowngrade flags). New `tod.js` (3-minute cycle, `updateTOD(dt)`, `getNightFactor()` cosine mapping, `setTODPhase()` for T-key shortcut). New `weather.js` (180 screen-space rain drops, wet-road dark sheen + perspective reflection streaks, `getGripMultiplier()=0.82` in rain, `getExtraFogDensity()`). `palette.js`: 4 stage palettes (dawn/day/dusk/night) + `_lerpH`/`_lerpR` helpers + `applyTODPalette(phase)` mutates `palette` in-place. `sky.js`: 80-star field drawn above sky gradient, moon with radial glow, sun fades at nightFactor>0.8, `drawBackground` takes optional `nightFactor`. `renderer.js`: ghost canvas + `captureGhost()`/`getGhostCanvas()` for motion blur. `car.js`: `gripMultiplier` on CAR applied to braking/steering, `drawTailLightGlow()` additive radial glow around tail lights. `opponents.js`: tail light glow at night. `debug.js`: `getFPS()` export, overlay shows `tod:` and `wx:`. `game.js`: new layers `lights` (headlight cones, 'lighter' blend), `weather-fx`, `motion-blur` (ghost composite at >72% speed), `film-grain` (96px tiled noise tile at 20fps update), `_checkAutoDowngrade()` disables grain+blur if FPS<45 for 2s. T/W keyboard shortcuts for TOD and weather. 70 tests green (11 new TOD tests, 9 new weather tests). Verified: 60 FPS / 5.1ms at max effects. Next: Phase 6 (audio, HUD, screens, persistence, stages, gamepad).
 
