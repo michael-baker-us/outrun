@@ -25,6 +25,16 @@ export function unlockAudio() {
   _masterGain.gain.value = 0.55;
   _masterGain.connect(_ctx.destination);
 
+  // iOS Safari requires a real audio buffer to be played (even silent) before
+  // the AudioContext is truly unlocked. Oscillators with gain=0 don't suffice.
+  const silentBuf = _ctx.createBuffer(1, 1, 22050);
+  const silentSrc = _ctx.createBufferSource();
+  silentSrc.buffer = silentBuf;
+  silentSrc.connect(_ctx.destination);
+  silentSrc.start(0);
+
+  if (_ctx.state === 'suspended') _ctx.resume();
+
   _setupEngine();
   _setupMusic();
   return true;

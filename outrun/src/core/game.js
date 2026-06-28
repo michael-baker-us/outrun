@@ -123,6 +123,39 @@ export function vehicleSelectPrev()   { _vehicleSelectIdx = (_vehicleSelectIdx -
 export function vehicleSelectNext()   { _vehicleSelectIdx = (_vehicleSelectIdx + 1) % PLAYER_VEHICLES.length; _saveSettings(); }
 export function vehicleSelectConfirm() { setGameState('title'); }
 
+// ---- Mobile settings controls -----------------------------------------------
+
+export function openSettings() {
+  const state = getGameState();
+  _settingsReturn = (state === 'playing') ? 'playing' : (state === 'paused' ? 'paused' : 'title');
+  if (state === 'playing') { stopMusic(); updateEngineSound(0); }
+  _menuIdx = 0;
+  setGameState('settings');
+}
+
+export function settingsClose() {
+  _saveSettings();
+  const ret = _settingsReturn ?? 'title';
+  setGameState(ret);
+  _menuIdx = 0;
+  if (ret === 'playing') startMusic();
+}
+
+export function settingsToggle(idx) {
+  if (idx === 0) settings.motionBlur    = !settings.motionBlur;
+  if (idx === 1) settings.filmGrain     = !settings.filmGrain;
+  if (idx === 2) settings.autoDowngrade = !settings.autoDowngrade;
+  if (idx === 4) _toggleWebGL();
+  if (idx === 5) settings.trafficEnabled = !settings.trafficEnabled;
+  _saveSettings();
+}
+
+export function settingsVolumeAdjust(delta) {
+  settings.volume = Math.max(0, Math.min(1, (settings.volume ?? 0.55) + delta * 0.1));
+  setMasterVolume(settings.volume);
+  _saveSettings();
+}
+
 // ---- Public API -------------------------------------------------------------
 
 export function startGame() {

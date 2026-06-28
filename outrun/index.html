@@ -25,8 +25,12 @@
       <button id="btn-brake" class="ctl ctl-brake" aria-label="Brake">BRAKE</button>
       <button id="btn-gas"   class="ctl ctl-gas" aria-label="Accelerate">GAS</button>
     </div>
-    <button id="btn-tilt" class="ctl ctl-tilt" aria-label="Toggle tilt steering">TILT</button>
+    <button id="btn-tilt"     class="ctl ctl-tilt"     aria-label="Toggle motion steering">MOTION</button>
+    <button id="btn-settings" class="ctl ctl-settings" aria-label="Open settings">&#9881;</button>
   </div>
+
+  <!-- Touch settings overlay (shown on touch devices when state=settings) -->
+  <div id="touch-settings-ui"></div>
 
   <script type="module" src="main.js"></script>
 </body>

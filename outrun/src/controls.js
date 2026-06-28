@@ -10,8 +10,11 @@ import {
   titlePrevStage, titleNextStage,
   titleCycleDifficulty, titleToggleBoosts, titleOpenVehicleSelect,
   vehicleSelectPrev, vehicleSelectNext, vehicleSelectConfirm,
+  openSettings, settingsClose, settingsToggle, settingsVolumeAdjust,
 } from './core/game.js';
-import { unlockAudio } from './systems/audio.js';
+import { unlockAudio, setMasterVolume } from './systems/audio.js';
+import { settings } from './core/settings.js';
+import { isWebGLSupported } from './rendering/webgl-road.js';
 
 // ---- Tilt steering --------------------------------------------------------
 
@@ -77,8 +80,8 @@ function bind(id, key) {
   if (!el) return;
 
   const press = (e) => {
+    _applyTouchAudioUnlock();
     e.preventDefault();
-    unlockAudio();
     const state = getState();
     // Title/vehicleSelect: the DOM overlay handles interaction; game buttons do nothing.
     if (state === 'title' || state === 'vehicleSelect') return;
@@ -128,10 +131,22 @@ function _pollGamepad() {
 
 const DIFF_COLORS = { easy: '#44ff88', normal: '#ffe44d', hard: '#ff4444' };
 
+let _touchAudioUnlocked = false;
+
+function _applyTouchAudioUnlock() {
+  unlockAudio();
+  if (!_touchAudioUnlocked) {
+    setMasterVolume(settings.volume ?? 0.55);
+    _touchAudioUnlocked = true;
+  }
+}
+
 function _tap(e, fn) {
+  // Unlock audio BEFORE preventDefault — iOS Safari may not treat the event
+  // as a user gesture for Web Audio if preventDefault was already called.
+  _applyTouchAudioUnlock();
   e.preventDefault();
   e.stopPropagation();
-  unlockAudio();
   fn();
 }
 
@@ -187,6 +202,88 @@ function _buildTouchTitleUI() {
   vehicleUI.querySelector('#tvu-confirm').addEventListener('pointerdown', e => _tap(e, vehicleSelectConfirm));
 }
 
+// ---- Touch settings overlay -----------------------------------------------
+
+const _SETTINGS_ROWS = [
+  { label: 'Motion Blur',  idx: 0 },
+  { label: 'Film Grain',   idx: 1 },
+  { label: 'Auto FPS',     idx: 2 },
+  { label: 'Volume',       idx: 3, type: 'volume' },
+  { label: 'WebGL Road',   idx: 4, type: 'webgl' },
+  { label: 'Traffic',      idx: 5 },
+];
+
+function _buildTouchSettingsUI() {
+  const el = document.getElementById('touch-settings-ui');
+  if (!el) return;
+
+  let html = `<div class="tsu-title">SETTINGS</div>`;
+
+  for (const row of _SETTINGS_ROWS) {
+    if (row.type === 'volume') {
+      html += `
+        <div class="tsu-row">
+          <span class="tsu-label">${row.label}</span>
+          <div class="tsu-vol-row">
+            <button id="tsu-vol-down" class="tsu-vol-btn">&#8722;</button>
+            <span id="tsu-vol-val" class="tsu-vol-val">55%</span>
+            <button id="tsu-vol-up" class="tsu-vol-btn">+</button>
+          </div>
+        </div>`;
+    } else {
+      html += `
+        <div class="tsu-row">
+          <span class="tsu-label">${row.label}</span>
+          <button id="tsu-${row.idx}" class="tsu-toggle">ON</button>
+        </div>`;
+    }
+  }
+
+  html += `<button id="tsu-back" class="tsu-back">&#8592; BACK</button>`;
+  el.innerHTML = html;
+
+  for (const row of _SETTINGS_ROWS) {
+    if (row.type === 'volume') {
+      el.querySelector('#tsu-vol-down').addEventListener('pointerdown', e => _tap(e, () => settingsVolumeAdjust(-1)));
+      el.querySelector('#tsu-vol-up')  .addEventListener('pointerdown', e => _tap(e, () => settingsVolumeAdjust(+1)));
+    } else {
+      el.querySelector(`#tsu-${row.idx}`).addEventListener('pointerdown', e => _tap(e, () => settingsToggle(row.idx)));
+    }
+  }
+
+  el.querySelector('#tsu-back').addEventListener('pointerdown', e => _tap(e, settingsClose));
+}
+
+function _syncSettingsUI() {
+  const volEl  = document.getElementById('tsu-vol-val');
+  if (volEl) volEl.textContent = `${Math.round((settings.volume ?? 0.55) * 100)}%`;
+
+  const states = [
+    settings.motionBlur,
+    settings.filmGrain,
+    settings.autoDowngrade,
+    null, // volume handled separately
+    isWebGLSupported() ? settings.webglRoad : null,
+    settings.trafficEnabled,
+  ];
+
+  for (const row of _SETTINGS_ROWS) {
+    if (row.type === 'volume') continue;
+    const btn = document.getElementById(`tsu-${row.idx}`);
+    if (!btn) continue;
+    const val = states[row.idx];
+    if (val === null) {
+      btn.textContent = 'N/A';
+      btn.disabled    = true;
+      btn.classList.add('off');
+    } else {
+      btn.textContent = val ? 'ON' : 'OFF';
+      btn.disabled    = false;
+      btn.classList.toggle('off', !val);
+    }
+  }
+}
+
 // rAF loop: keeps overlay content and body[data-state] in sync with game state.
 function _syncTouchUI() {
   const state = getState();
@@ -235,6 +332,10 @@ function _syncTouchUI() {
     }
   }
 
+  if (state === 'settings') {
+    _syncSettingsUI();
+  }
+
   if (state === 'vehicleSelect') {
     const ts = getTitleState();
 
@@ -280,19 +381,21 @@ export function initControls() {
   const tiltBtn = document.getElementById('btn-tilt');
   if (tiltBtn) {
     tiltBtn.addEventListener('click', async () => {
-      unlockAudio();
+      _applyTouchAudioUnlock();
       if (!tiltOn) {
         if (status) { status.textContent = 'tilt: requesting...'; delete status.dataset.live; }
         if (await enableTilt()) {
           tiltOn = true;
           document.body.classList.add('tilt');
           tiltBtn.classList.add('on');
+          tiltBtn.textContent = 'RESET';
         }
       } else {
         tiltOn = false;
         disableTilt();
         document.body.classList.remove('tilt');
         tiltBtn.classList.remove('on');
+        tiltBtn.textContent = 'MOTION';
       }
     });
   }
@@ -303,15 +406,21 @@ export function initControls() {
     gameCanvas.addEventListener('pointerdown', (e) => {
       const state = getState();
       if (state !== 'gameover') return;
+      _applyTouchAudioUnlock();
       e.preventDefault();
-      unlockAudio();
       startGame();
     });
   }
 
-  // Build the touch title overlay on touch devices and start the sync loop.
+  const settingsBtn = document.getElementById('btn-settings');
+  if (settingsBtn) {
+    settingsBtn.addEventListener('pointerdown', e => _tap(e, openSettings));
+  }
+
+  // Build the touch overlays on touch devices and start the sync loop.
   if (isTouch) {
     _buildTouchTitleUI();
+    _buildTouchSettingsUI();
     _syncTouchUI();
   }
 

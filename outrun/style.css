@@ -253,3 +253,120 @@ body.touch[data-state="vehicleSelect"] #touch-vehicle-ui { display: flex; }
 }
 
 .ttu-race:active { background: rgba(255, 228, 77, 0.35); }
+
+/* ---- Settings button (top-left, mirrors tilt button at top-right) ---- */
+.ctl-settings {
+  position: fixed;
+  top:  calc(10px + env(safe-area-inset-top,  0px));
+  left: calc(10px + env(safe-area-inset-left, 0px));
+  width: 54px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 18px;
+  border-color: rgba(68, 136, 204, 0.55);
+  z-index: 11;
+}
+.ctl-settings:active { background: rgba(68, 136, 204, 0.5); }
+
+/* Hide game controls during settings and paused states (overlays cover canvas) */
+body.touch[data-state="settings"] #controls { display: none !important; }
+
+/* ---- Touch settings overlay ---- */
+#touch-settings-ui {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  background: rgba(0, 4, 16, 0.96);
+  flex-direction: column;
+  align-items: stretch;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) 20px calc(16px + env(safe-area-inset-bottom, 0px));
+  gap: 0;
+  overflow-y: auto;
+  font-family: monospace;
+}
+
+body.touch[data-state="settings"] #touch-settings-ui { display: flex; }
+
+.tsu-title {
+  text-align: center;
+  font: bold 18px/1 monospace;
+  color: #4488cc;
+  letter-spacing: 0.14em;
+  padding: 10px 0 14px;
+  border-bottom: 1px solid rgba(68, 136, 204, 0.30);
+  margin-bottom: 8px;
+}
+
+.tsu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.tsu-label {
+  font: 14px/1 monospace;
+  color: rgba(255, 255, 255, 0.80);
+  letter-spacing: 0.04em;
+}
+
+.tsu-toggle {
+  min-width: 64px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 228, 77, 0.45);
+  background: rgba(255, 228, 77, 0.08);
+  color: #ffe44d;
+  font: bold 13px/1 monospace;
+  letter-spacing: 0.06em;
+  touch-action: none;
+}
+.tsu-toggle:active { background: rgba(255, 228, 77, 0.28); }
+.tsu-toggle.off {
+  border-color: rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.tsu-vol-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.tsu-vol-val {
+  font: bold 14px/1 monospace;
+  color: #ffe44d;
+  min-width: 38px;
+  text-align: center;
+}
+.tsu-vol-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 228, 77, 0.45);
+  background: rgba(255, 228, 77, 0.08);
+  color: #ffe44d;
+  font: bold 20px/1 monospace;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+.tsu-vol-btn:active { background: rgba(255, 228, 77, 0.28); }
+
+.tsu-back {
+  margin-top: 20px;
+  width: 100%;
+  padding: 15px;
+  border: 2px solid rgba(68, 136, 204, 0.60);
+  border-radius: 8px;
+  background: rgba(68, 136, 204, 0.12);
+  color: #4488cc;
+  font: bold 16px/1 monospace;
+  text-align: center;
+  letter-spacing: 0.10em;
+  touch-action: none;
+}
+.tsu-back:active { background: rgba(68, 136, 204, 0.30); }
