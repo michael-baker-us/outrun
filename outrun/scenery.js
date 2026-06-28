@@ -38,10 +38,36 @@ function _stageRemap(type, stageIdx, segIdx) {
   }
 
   if (stageIdx === 2) { // CITY: buildings, street trees, urban planters
-    if (type === 'pine')  return `building-${_sh(segIdx) % 3}`; // buildings line the road
-    if (type === 'palm')  return 'poplar';   // street trees instead of tropical palms
-    if (type === 'rock')  return 'bush';     // planters instead of boulders
+    if (type === 'pine')  return `building-${_sh(segIdx) % 3}`;
+    if (type === 'palm')  return 'poplar';
+    if (type === 'rock')  return 'bush';
     return type;
+  }
+
+  if (stageIdx === 3) { // SEA: sparse buoys only — wide gaps between them
+    const h = _sh(segIdx);
+    if ((h & 7) > 2) return null; // keep ~37% of slots
+    return 'buoy';
+  }
+
+  if (stageIdx === 4) { // SPACE: sparse asteroids, three sizes — no beacons
+    const h = _sh(segIdx);
+    if ((h & 3) !== 0) return null; // keep ~25% of slots
+    const sz = (h >> 8) & 7;
+    if (sz < 2) return 'asteroid-sm';
+    if (sz < 5) return 'asteroid';
+    return 'asteroid-lg';
+  }
+
+  if (stageIdx === 5) { // DIRT: leaderboards, tire stacks, hay bales, course flags
+    const h = _sh(segIdx);
+    if ((h & 1) !== 0) return null; // keep ~50% of slots
+    const kind = (h >> 4) & 0xF;
+    if (kind < 2) return 'courseflag';
+    if (kind < 4) return 'leaderboard';
+    if (kind < 6) return 'tirestacks';
+    if (kind < 9) return 'dirtmound';
+    return 'haybale';
   }
 
   return type;
@@ -64,6 +90,15 @@ const SPRITE_WIDTHS = {
   'building-2':  2.8,
   seagrass:      2.2,
   lifeguard:     2.0,
+  buoy:          1.0,
+  asteroid:      2.6,
+  'asteroid-sm': 1.3,
+  'asteroid-lg': 4.8,
+  haybale:       2.4,
+  dirtmound:     2.8,
+  courseflag:    0.8,
+  tirestacks:    1.8,
+  leaderboard:   2.2,
 };
 
 // Ground shadow ellipse x-radius as a multiple of road half-width.
@@ -82,6 +117,15 @@ const SHADOW_WX = {
   'building-2':  1.30,
   seagrass:      0.80,
   lifeguard:     0.85,
+  buoy:          0.45,
+  asteroid:      1.10,
+  'asteroid-sm': 1.10,
+  'asteroid-lg': 1.10,
+  haybale:       1.00,
+  dirtmound:     1.20,
+  courseflag:    0.25,
+  tirestacks:    0.90,
+  leaderboard:   1.00,
 };
 
 let _lastSpriteCount = 0;
@@ -109,6 +153,7 @@ export function drawScenery(ctx, segments, assets, stageIdx = 0) {
 
     for (const sprite of seg.sprites) {
       const type = _stageRemap(sprite.type, stageIdx, proj.segIdx);
+      if (!type) continue; // null = thinned out for this stage
       const sx = proj.roadX + sprite.offset * proj.roadW;
       const sy = proj.screenY;
 
@@ -121,7 +166,10 @@ export function drawScenery(ctx, segments, assets, stageIdx = 0) {
   }
 }
 
+const NO_SHADOW = new Set(['buoy', 'asteroid', 'asteroid-sm', 'asteroid-lg']);
+
 function _drawShadow(ctx, type, x, baseY, roadW) {
+  if (NO_SHADOW.has(type)) return;
   const rx = roadW * (SHADOW_WX[type] ?? 0.85);
   ctx.fillStyle = 'rgba(0,0,0,0.18)';
   ctx.beginPath();

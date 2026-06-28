@@ -5,28 +5,31 @@
 import { SEGMENT_LENGTH, TRACK_LENGTH, DRAW_DISTANCE, projectObject, fogAlpha } from './road.js';
 import { drawCar3D, drawBrakeLights, drawTailLightGlow, startSpinOut, SPIN_TRIGGER_SPEED, VEHICLE_SHAPES } from './car.js';
 
-const OPPONENT_COLORS = ['#2266cc', '#cccc22', '#22aa55', '#aa44cc', '#ee7711'];
+export const OPPONENT_COLORS = ['#2266cc', '#cccc22', '#22aa55', '#aa44cc', '#ee7711'];
 // sports appears twice so the majority of traffic looks like the player's car class
-const VEHICLE_TYPES   = ['sports', 'sports', 'sedan', 'compact', 'truck'];
+export const VEHICLE_TYPES = ['sports', 'sports', 'sedan', 'compact', 'truck'];
 
 const OPP_WIDTH_FACTOR   = 0.34;
 const OPP_MAX_WIDTH      = 200;
 const PLAYER_HALF_OFFSET = 0.10;
 export const COLLISION_HALF = OPP_WIDTH_FACTOR / 2 + PLAYER_HALF_OFFSET; // ~0.27
 
-export function buildOpponents(count) {
+// vehicleTypes / vehicleColors: arrays from stage definition, or null for defaults.
+export function buildOpponents(count, vehicleTypes = null, vehicleColors = null) {
+  const types  = vehicleTypes  || VEHICLE_TYPES;
+  const colors = vehicleColors || OPPONENT_COLORS;
   const opps = [];
   for (let i = 0; i < count; i++) {
     opps.push({
       z:            2000 + Math.random() * (TRACK_LENGTH - 4000),
       offset:       Math.random() * 1.2 - 0.6,
       speed:        1500 + Math.random() * 2500,
-      color:        OPPONENT_COLORS[i % OPPONENT_COLORS.length],
-      type:         VEHICLE_TYPES[i % VEHICLE_TYPES.length],
+      color:        colors[i % colors.length],
+      type:         types[i % types.length],
       wobblePhase:  Math.random() * Math.PI * 2,
       wobbleOffset: 0,
       braking:      false,
-      brakingTimer: 1 + Math.random() * 3, // seconds until next brake-light toggle
+      brakingTimer: 1 + Math.random() * 3,
     });
   }
   return opps;

@@ -282,18 +282,24 @@ gamepad drives the car.
 ---
 
 ### Phase 7 — (Optional / stretch) WebGL2 renderer
-**Status:** not started
+**Status:** done
 **Goal:** Lift the fidelity ceiling with a real GPU pipeline — pure learning.
 
 **Why / what you learn:** WebGL2, shaders (GLSL), textured meshes, framebuffer
 post-processing, renderer abstraction in practice.
 
-- [ ] Implement an alternate `Renderer` (the Phase 1 abstraction pays off here):
-      road as a textured mesh/strip, sprites as textured quads, batched draws.
-- [ ] Shader-based **fog, lighting, post-FX** (bloom/vignette/grade in GLSL).
-- [ ] Runtime switch Canvas2D ↔ WebGL (settings + `?renderer=`), with Canvas2D as
-      the guaranteed fallback when WebGL is unavailable.
-- [ ] Perf comparison logged in the Progress Log.
+- [x] Implement an alternate renderer (`webgl-road.js`): road geometry batched into
+      a single `gl.drawArrays()` call per frame via a pre-allocated Float32Array VBO.
+      All other layers (sky, scenery, HUD, particles) remain on Canvas 2D — hybrid.
+- [x] Shader-based **fog** in GLSL: per-vertex `a_fog` attribute interpolated in
+      fragment shader via `mix(v_col, u_fog_col, v_fog)`. Matches Canvas 2D fog exactly.
+- [x] Runtime switch Canvas2D ↔ WebGL: `?renderer=webgl` URL param + "WebGL Road"
+      toggle in Settings screen (index 4). Canvas 2D is the guaranteed fallback; WebGL
+      initializes lazily on first toggle so it doesn't cost anything if unused.
+- [x] Visual parity verified at same seed/frame — WebGL and Canvas 2D renders are
+      pixel-identical for road geometry (road surface, rumble strips, shoulder, lane
+      dashes, fog). Perf note: GPU path batches ~5000 vertices into 1 draw call vs
+      ~700+ individual Canvas 2D polygon() calls. Verified in Playwright, no errors.
 
 **Acceptance:** WebGL renderer reaches visual parity-or-better with Canvas2D and
 runs within budget; falls back to Canvas2D cleanly where unsupported.
@@ -342,6 +348,8 @@ Per the user's cross-project standards — fold these in continuously, don't def
 ## 6. Progress Log
 
 > Newest first. One short entry per session: what landed, FPS/notes, what's next.
+
+- **2026-06-27 — Phase 7 complete.** New `webgl-road.js`: vertex shader converts screen-pixel coords to NDC, fragment shader mixes vertex colour with fog colour via `mix(v_col, u_fog_col, v_fog)`. Pre-allocated `Float32Array(6144 × 6)` VBO filled each frame with grass bands, left/right shoulders, rumble strips, road surface, and lane dashes for all 120 visible segments + 1 base fill quad = up to ~5046 vertices per frame, uploaded via `gl.bufferSubData` and drawn in a single `gl.drawArrays(TRIANGLES)` call. WebGL canvas has `alpha:true, premultipliedAlpha:false, preserveDrawingBuffer:true`; composited onto the 2D back-buffer via `ctx.drawImage(webglCanvas, …)` in the road layer, so the Canvas 2D sky renders underneath correctly. `frameSegs[]` exported from `road.js` (was `const`, now `export const`). `settings.webglRoad` added; persisted to localStorage. Toggle in Settings screen (index 4: "WebGL Road"). `?renderer=webgl` URL param enables on load. Lazy WebGL init: only initializes on first use, so Canvas 2D path has zero overhead when WebGL is off. 106 tests still green. Visual parity with Canvas 2D confirmed in Playwright at same seed/frame. Next: open-ended — game is feature-complete through all planned phases.
 
 - **2026-06-27 — Phase 6 complete.** New `gamestate.js` (state machine: title/playing/paused/settings/gameover; `setGameState`, `onEnterState`, `onExitState`). New `audio.js` (WebAudio procedural synth: sawtooth+square engine drone RPM-mapped 80→400 Hz, lowpass filter, A-minor ambient music chord; `playSFX('checkpoint'|'crash')` one-shots; `unlockAudio()` deferred to first user gesture; `setMasterVolume()`). New `storage.js` (localStorage wrapper with injectable backend for tests: `addHighScore`, `getHighScores`, top-5 sorted, `saveSettings/loadSettings`, `saveLastSeed/loadLastSeed`). New `stage.js` (COAST/DESERT/CITY biomes with road color overrides; thresholds at 0/750k/1.5M distance units; `getStageIndex`, `getStage`). `controls.js`: gamepad polling via `setInterval(16ms)` — left-stick axis + D-pad → ArrowLeft/Right, face/trigger buttons → ArrowUp/Down; `unlockAudio()` on all touch events; `startGame()` on tap in title/gameover states. `game.js`: state machine replaces bare `_state` flag; title screen with attract mode (world renders live behind overlay at 2200 u/s); pause/settings/gameover screens with rounded-rect panels and keyboard navigation (↑↓ move, ←→ adjust volume, ENTER select, ESC back); stage colour overrides applied after TOD each frame; checkpoint/crash audio hooked; high score saved on game over; settings persisted to localStorage; `startGame()` exported. HUD gains stage name (top-centre). Game over shows distance/stage/★NEW HIGH SCORE. `settings.js` cleaned up (dropped unused weather/timeOfDay, added `volume`). 106 tests green (9 gamestate, 13 storage, 14 stage tests new). Next: Phase 7 (WebGL2 renderer — stretch).
 

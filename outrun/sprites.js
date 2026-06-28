@@ -22,6 +22,17 @@ export function buildSprites() {
   _cache.set('building-2',  makeBuilding(2));
   _cache.set('seagrass',    makeSeagrass());
   _cache.set('lifeguard',   makeLifeguard());
+  // Special stage sprites
+  _cache.set('buoy',        makeBuoy());
+  const _ast = makeAsteroid();
+  _cache.set('asteroid',    _ast);
+  _cache.set('asteroid-sm', _ast); // same image, size comes from SPRITE_WIDTHS
+  _cache.set('asteroid-lg', _ast);
+  _cache.set('haybale',     makeHaybale());
+  _cache.set('dirtmound',   makeDirtMound());
+  _cache.set('courseflag',  makeCourseFlag());
+  _cache.set('tirestacks',  makeTireStack());
+  _cache.set('leaderboard', makeLeaderboard());
 }
 
 export function getSprite(key) { return _cache.get(key) ?? null; }
@@ -418,6 +429,466 @@ function makeSeagrass() {
     ctx.moveTo(bx, 50);
     ctx.quadraticCurveTo(cpx, cpy, tx, ty);
     ctx.stroke();
+  }
+
+  return c;
+}
+
+// ---- Buoy -------------------------------------------------------------------
+// IALA channel marker buoy: conical float, cage superstructure, beacon light.
+// Canvas: 64 × 168.
+
+function makeBuoy() {
+  const [c, ctx] = mc(64, 168);
+  const cx = 32;
+
+  // Water surface ripples at base
+  ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+  ctx.lineWidth = 1.2;
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    ctx.ellipse(cx + (i - 1) * 3, 160 + i * 2, 14 - i * 2, 3 + i * 0.5, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(0,30,80,0.28)';
+  ctx.beginPath(); ctx.ellipse(cx, 162, 18, 4.5, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Float body — conical bezier (wide at waterline, narrows to cage neck)
+  const floatClip = new Path2D();
+  floatClip.moveTo(cx - 25, 154);
+  floatClip.bezierCurveTo(cx - 29, 126, cx - 22, 98, cx - 10, 76);
+  floatClip.lineTo(cx + 10, 76);
+  floatClip.bezierCurveTo(cx + 22, 98, cx + 29, 126, cx + 25, 154);
+  floatClip.closePath();
+
+  const fg = ctx.createLinearGradient(cx - 28, 0, cx + 28, 0);
+  fg.addColorStop(0,    '#7a0f06');
+  fg.addColorStop(0.18, '#cc2211');
+  fg.addColorStop(0.44, '#ff3322');
+  fg.addColorStop(0.65, '#cc1e0e');
+  fg.addColorStop(1,    '#7a0f06');
+  ctx.fillStyle = fg;
+  ctx.fill(floatClip);
+
+  // White horizontal band clipped to float outline
+  ctx.save();
+  ctx.clip(floatClip);
+  ctx.fillStyle = '#dadad0';
+  ctx.fillRect(0, 110, 64, 18);
+  // Number "4" marking
+  ctx.fillStyle = '#5a0a04';
+  ctx.font = 'bold 20px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('4', cx, 140);
+  ctx.restore();
+
+  // Highlight sheen on left face
+  ctx.fillStyle = 'rgba(255,210,190,0.20)';
+  ctx.beginPath();
+  ctx.ellipse(cx - 10, 118, 8, 28, -0.18, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Neck (float top → cage)
+  const nk = ctx.createLinearGradient(cx - 12, 0, cx + 12, 0);
+  nk.addColorStop(0, '#660d05'); nk.addColorStop(0.5, '#aa1a0a'); nk.addColorStop(1, '#660d05');
+  ctx.fillStyle = nk;
+  ctx.fillRect(cx - 9, 66, 18, 14);
+
+  // Cage bottom ring
+  ctx.strokeStyle = '#7c7c7c'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.ellipse(cx, 67, 12, 4, 0, 0, Math.PI * 2); ctx.stroke();
+
+  // Cage struts (4 diagonals + cross brace)
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(cx - 11, 67); ctx.lineTo(cx - 5, 46); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx + 11, 67); ctx.lineTo(cx + 5, 46); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx - 4, 67); ctx.lineTo(cx - 2, 46); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx + 4, 67); ctx.lineTo(cx + 2, 46); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx - 9, 57); ctx.lineTo(cx + 9, 57); ctx.stroke();
+  // Cage top ring
+  ctx.beginPath(); ctx.ellipse(cx, 46, 6, 2, 0, 0, Math.PI * 2); ctx.stroke();
+
+  // Lantern housing
+  ctx.fillStyle = '#303030';
+  ctx.fillRect(cx - 6, 38, 12, 10);
+  ctx.fillStyle = '#444';
+  ctx.beginPath(); ctx.ellipse(cx, 38, 6, 2, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Beacon glow
+  const gg = ctx.createRadialGradient(cx, 33, 0, cx, 33, 18);
+  gg.addColorStop(0,    'rgba(255,245,80,0.98)');
+  gg.addColorStop(0.22, 'rgba(255,220,30,0.70)');
+  gg.addColorStop(0.55, 'rgba(255,180,0,0.25)');
+  gg.addColorStop(1,    'rgba(255,150,0,0)');
+  ctx.fillStyle = gg;
+  ctx.beginPath(); ctx.arc(cx, 33, 18, 0, Math.PI * 2); ctx.fill();
+
+  // Light core
+  ctx.fillStyle = '#fff8c0';
+  ctx.beginPath(); ctx.arc(cx, 33, 4.5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(cx, 33, 2, 0, Math.PI * 2); ctx.fill();
+
+  // Antenna shaft + warning ball
+  ctx.strokeStyle = '#848484'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(cx, 38); ctx.lineTo(cx, 6); ctx.stroke();
+  ctx.fillStyle = '#ff2200';
+  ctx.beginPath(); ctx.arc(cx, 6, 3, 0, Math.PI * 2); ctx.fill();
+
+  return c;
+}
+
+// ---- Tire stack -------------------------------------------------------------
+// Stack of 3 used racing tires. Canvas: 80 × 72.
+
+function makeTireStack() {
+  const [c, ctx] = mc(80, 72);
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.24)';
+  ctx.beginPath(); ctx.ellipse(40, 68, 34, 5, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Draw tires bottom-to-top so upper tires overdraw lower
+  for (let i = 2; i >= 0; i--) {
+    const cy = 60 - i * 18;
+    const rx = 28 - i * 1.5;       // slight fore-shortening going up
+    const ry = rx * 0.36;
+
+    // Tread outer ring (black rubber)
+    ctx.fillStyle = '#181818';
+    ctx.beginPath(); ctx.ellipse(40, cy, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Tread shoulder highlight (worn rubber sheen)
+    ctx.strokeStyle = '#2e2e2e'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.ellipse(40, cy, rx - 1.5, ry - 0.8, 0, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+
+    // Inner sidewall
+    ctx.fillStyle = '#111';
+    ctx.beginPath(); ctx.ellipse(40, cy, rx * 0.60, ry * 0.60, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Rim (silver metal hub)
+    const rg = ctx.createRadialGradient(36, cy - 1, 1, 40, cy, rx * 0.42);
+    rg.addColorStop(0, '#c8c8c8'); rg.addColorStop(0.4, '#909090'); rg.addColorStop(1, '#606060');
+    ctx.fillStyle = rg;
+    ctx.beginPath(); ctx.ellipse(40, cy, rx * 0.42, ry * 0.42, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Rim spokes (4)
+    ctx.strokeStyle = '#787878'; ctx.lineWidth = 1.5;
+    const spoke_angles = [0, Math.PI / 2, Math.PI, Math.PI * 1.5];
+    for (const a of spoke_angles) {
+      ctx.beginPath();
+      ctx.moveTo(40 + Math.cos(a) * rx * 0.12, cy + Math.sin(a) * ry * 0.12);
+      ctx.lineTo(40 + Math.cos(a) * rx * 0.38, cy + Math.sin(a) * ry * 0.38);
+      ctx.stroke();
+    }
+
+    // Centre cap
+    ctx.fillStyle = '#505050';
+    ctx.beginPath(); ctx.ellipse(40, cy, rx * 0.10, ry * 0.10, 0, 0, Math.PI * 2); ctx.fill();
+  }
+
+  return c;
+}
+
+// ---- Leaderboard / timing board -------------------------------------------
+// Electronic results display on an A-frame pole stand. Canvas: 96 × 200.
+
+function makeLeaderboard() {
+  const [c, ctx] = mc(96, 200);
+
+  // A-frame legs
+  ctx.strokeStyle = '#5a5a5a'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(20, 196); ctx.lineTo(36, 138); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(76, 196); ctx.lineTo(60, 138); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(8, 196); ctx.lineTo(36, 138); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(88, 196); ctx.lineTo(60, 138); ctx.stroke();
+  // Cross brace
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(16, 176); ctx.lineTo(80, 176); ctx.stroke();
+  ctx.lineCap = 'butt';
+
+  // Board outer frame (aluminium)
+  ctx.fillStyle = '#626262';
+  ctx.fillRect(4, 8, 88, 132);
+
+  // Board inner screen (dark LED matrix)
+  ctx.fillStyle = '#0a0a0a';
+  ctx.fillRect(8, 12, 80, 124);
+
+  // Header row
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 8px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('LAP TIMES', 48, 24);
+  ctx.fillStyle = '#444';
+  ctx.fillRect(8, 26, 80, 1);
+
+  // Result rows (LED amber color)
+  const rows = [
+    ['1', 'HAWK', '43.21'],
+    ['2', 'SILVA', '43.87'],
+    ['3', 'BURNS', '44.10'],
+    ['4', 'KATO', '44.82'],
+    ['5', 'FORD', '45.13'],
+  ];
+  ctx.font = '7px monospace';
+  rows.forEach(([rank, name, time], i) => {
+    const y = 37 + i * 20;
+    const isTop = i === 0;
+    ctx.fillStyle = isTop ? '#ffdd00' : '#dd7700';
+    // Rank
+    ctx.textAlign = 'left';
+    ctx.fillText(rank + '.', 12, y);
+    // Name
+    ctx.fillText(name, 24, y);
+    // Time
+    ctx.textAlign = 'right';
+    ctx.fillText(time, 84, y);
+    // Separator line
+    if (i < rows.length - 1) {
+      ctx.fillStyle = '#1e1e1e';
+      ctx.fillRect(10, y + 4, 76, 1);
+    }
+  });
+
+  // Frame edge highlight (aluminium bevel)
+  ctx.strokeStyle = '#888'; ctx.lineWidth = 1;
+  ctx.strokeRect(4, 8, 88, 132);
+  ctx.strokeStyle = '#383838';
+  ctx.strokeRect(8, 12, 80, 124);
+
+  return c;
+}
+
+// ---- Asteroid ---------------------------------------------------------------
+// Jagged cratered space rock — darker, more irregular than earth rock. Canvas: 96 × 72.
+
+function makeAsteroid() {
+  const [c, ctx] = mc(96, 72);
+
+  // Ground shadow
+  ctx.fillStyle = 'rgba(0,0,20,0.30)';
+  ctx.beginPath(); ctx.ellipse(50, 68, 36, 7, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Jagged main body using irregular polygon
+  ctx.fillStyle = '#3a3540';
+  ctx.beginPath();
+  const pts = [
+    [14, 52], [4, 36], [10, 20], [22, 8], [40, 4], [58, 6],
+    [74, 10], [88, 22], [90, 38], [82, 52], [68, 60], [48, 64], [28, 62],
+  ];
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (const [x, y] of pts.slice(1)) ctx.lineTo(x, y);
+  ctx.closePath(); ctx.fill();
+
+  // Mid-tone face
+  ctx.fillStyle = '#52485c';
+  ctx.beginPath();
+  ctx.moveTo(22, 50); ctx.lineTo(12, 34); ctx.lineTo(20, 18); ctx.lineTo(42, 12);
+  ctx.lineTo(62, 14); ctx.lineTo(74, 26); ctx.lineTo(70, 46); ctx.lineTo(52, 56);
+  ctx.closePath(); ctx.fill();
+
+  // Lit upper-left patch
+  ctx.fillStyle = '#6e6078';
+  ctx.beginPath(); ctx.ellipse(36, 24, 18, 11, -0.4, 0, Math.PI * 2); ctx.fill();
+
+  // Craters
+  for (const [cx2, cy, r] of [[54, 38, 8], [30, 44, 5], [66, 24, 5], [40, 20, 3]]) {
+    ctx.fillStyle = '#29222e';
+    ctx.beginPath(); ctx.arc(cx2, cy, r, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#5a5060'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(cx2 - 1, cy - 1, r * 0.6, Math.PI * 1.3, Math.PI * 1.9); ctx.stroke();
+  }
+
+  // Surface specks
+  ctx.fillStyle = '#8a7890';
+  for (const [x, y] of [[28, 18], [60, 18], [70, 36], [44, 48]]) {
+    ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI * 2); ctx.fill();
+  }
+
+  return c;
+}
+
+// ---- Space beacon -----------------------------------------------------------
+// Glowing navigation pylon — neon blue with antenna. Canvas: 48 × 160.
+
+function makeSpaceBeacon() {
+  const [c, ctx] = mc(48, 160);
+  const cx = 24;
+
+  // Base glow on ground
+  const bg = ctx.createRadialGradient(cx, 155, 0, cx, 155, 22);
+  bg.addColorStop(0, 'rgba(80,140,255,0.40)'); bg.addColorStop(1, 'rgba(80,140,255,0)');
+  ctx.fillStyle = bg; ctx.fillRect(0, 130, 48, 30);
+
+  // Base plinth
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(8, 132, 32, 22);
+  ctx.fillStyle = '#2a2a44';
+  ctx.fillRect(10, 132, 28, 18);
+
+  // Tower shaft
+  const shaftG = ctx.createLinearGradient(12, 0, 36, 0);
+  shaftG.addColorStop(0, '#0a1030'); shaftG.addColorStop(0.4, '#1c2860'); shaftG.addColorStop(1, '#0a1030');
+  ctx.fillStyle = shaftG;
+  ctx.fillRect(16, 28, 16, 106);
+
+  // Neon accent rings every 20px
+  for (let y = 40; y < 130; y += 22) {
+    const rg = ctx.createLinearGradient(0, y, 48, y);
+    rg.addColorStop(0, 'rgba(60,120,255,0)');
+    rg.addColorStop(0.5, 'rgba(100,180,255,0.75)');
+    rg.addColorStop(1, 'rgba(60,120,255,0)');
+    ctx.fillStyle = rg;
+    ctx.fillRect(0, y, 48, 3);
+  }
+
+  // Strobe beacon body
+  const bkG = ctx.createRadialGradient(cx, 20, 0, cx, 20, 18);
+  bkG.addColorStop(0, '#99ddff'); bkG.addColorStop(0.4, '#3388ff'); bkG.addColorStop(1, '#1133aa');
+  ctx.fillStyle = bkG;
+  ctx.beginPath(); ctx.arc(cx, 20, 14, 0, Math.PI * 2); ctx.fill();
+
+  // Strobe glow
+  const sg = ctx.createRadialGradient(cx, 20, 0, cx, 20, 28);
+  sg.addColorStop(0, 'rgba(120,200,255,0.55)'); sg.addColorStop(1, 'rgba(60,140,255,0)');
+  ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(cx, 20, 28, 0, Math.PI * 2); ctx.fill();
+
+  // Antenna tip
+  ctx.fillStyle = '#88aacc';
+  ctx.fillRect(cx - 1, 0, 2, 8);
+  ctx.fillStyle = '#ffdd88';
+  ctx.beginPath(); ctx.arc(cx, 2, 2.5, 0, Math.PI * 2); ctx.fill();
+
+  return c;
+}
+
+// ---- Hay bale ---------------------------------------------------------------
+// Rectangular straw bale: golden tan with binding twine. Canvas: 96 × 64.
+
+function makeHaybale() {
+  const [c, ctx] = mc(96, 64);
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.beginPath(); ctx.ellipse(48, 61, 38, 6, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Side face (dark)
+  ctx.fillStyle = '#8a6410';
+  ctx.beginPath();
+  ctx.moveTo(74, 16); ctx.lineTo(88, 22); ctx.lineTo(88, 56); ctx.lineTo(74, 50);
+  ctx.closePath(); ctx.fill();
+
+  // Top face
+  ctx.fillStyle = '#d4a830';
+  ctx.beginPath();
+  ctx.moveTo(6, 16); ctx.lineTo(74, 16); ctx.lineTo(88, 22); ctx.lineTo(20, 22);
+  ctx.closePath(); ctx.fill();
+
+  // Front face gradient
+  const fg = ctx.createLinearGradient(0, 16, 0, 56);
+  fg.addColorStop(0, '#e0b430'); fg.addColorStop(0.5, '#c89c20'); fg.addColorStop(1, '#a07a14');
+  ctx.fillStyle = fg;
+  ctx.fillRect(6, 22, 68, 34);
+
+  // Straw texture lines (horizontal, evenly spaced)
+  ctx.strokeStyle = 'rgba(180,130,20,0.55)'; ctx.lineWidth = 1.2;
+  for (let y = 25; y < 54; y += 4) {
+    ctx.beginPath(); ctx.moveTo(7, y); ctx.lineTo(73, y); ctx.stroke();
+  }
+
+  // Binding twine (two vertical straps)
+  ctx.strokeStyle = '#4a3808'; ctx.lineWidth = 2.5;
+  for (const x of [24, 52]) {
+    ctx.beginPath(); ctx.moveTo(x, 15); ctx.lineTo(x, 56); ctx.stroke();
+  }
+
+  // Top twine horizontal
+  ctx.beginPath(); ctx.moveTo(6, 22); ctx.lineTo(74, 22); ctx.stroke();
+
+  // Edges
+  ctx.strokeStyle = 'rgba(0,0,0,0.30)'; ctx.lineWidth = 1;
+  ctx.strokeRect(6, 22, 68, 34);
+
+  return c;
+}
+
+// ---- Dirt mound -------------------------------------------------------------
+// Low earthen berm: dark soil colours. Canvas: 96 × 44.
+
+function makeDirtMound() {
+  const [c, ctx] = mc(96, 44);
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.20)';
+  ctx.beginPath(); ctx.ellipse(48, 41, 44, 6, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Main mound body
+  const mg = ctx.createLinearGradient(0, 8, 0, 40);
+  mg.addColorStop(0, '#7a4a1a'); mg.addColorStop(0.5, '#5e3610'); mg.addColorStop(1, '#3a2008');
+  ctx.fillStyle = mg;
+  ctx.beginPath();
+  ctx.moveTo(2, 40); ctx.bezierCurveTo(10, 38, 12, 8, 30, 6);
+  ctx.bezierCurveTo(48, 4, 52, 4, 66, 6);
+  ctx.bezierCurveTo(84, 8, 86, 38, 94, 40);
+  ctx.closePath(); ctx.fill();
+
+  // Lit crest
+  ctx.fillStyle = '#9a6030';
+  ctx.beginPath(); ctx.ellipse(48, 16, 26, 8, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Loose dirt speckles
+  ctx.fillStyle = 'rgba(180,120,50,0.45)';
+  for (const [x, y] of [[30, 24], [50, 18], [66, 28], [38, 36], [60, 34]]) {
+    ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Tire rut mark across the face
+  ctx.strokeStyle = 'rgba(30,10,0,0.35)'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(14, 34); ctx.bezierCurveTo(30, 30, 62, 30, 82, 34); ctx.stroke();
+
+  return c;
+}
+
+// ---- Course flag -----------------------------------------------------------
+// Checkered race flag on a pole. Canvas: 72 × 160.
+
+function makeCourseFlag() {
+  const [c, ctx] = mc(72, 160);
+  const px = 12; // pole x
+
+  // Pole
+  ctx.fillStyle = '#888';
+  ctx.fillRect(px - 2, 10, 4, 148);
+
+  // Ground plug
+  ctx.fillStyle = '#555';
+  ctx.beginPath(); ctx.ellipse(px, 155, 5, 3, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Flag body (checkered: 4 cols × 5 rows of 14×14 squares)
+  const flagX = px + 2, flagY = 10, fw = 58, fh = 70;
+  const cols = 4, rows = 5;
+  const cw2 = fw / cols, ch2 = fh / rows;
+  for (let r = 0; r < rows; r++) {
+    for (let cl = 0; cl < cols; cl++) {
+      ctx.fillStyle = (r + cl) % 2 === 0 ? '#ffffff' : '#111111';
+      ctx.fillRect(flagX + cl * cw2, flagY + r * ch2, cw2, ch2);
+    }
+  }
+
+  // Flag border
+  ctx.strokeStyle = '#444'; ctx.lineWidth = 1.5;
+  ctx.strokeRect(flagX, flagY, fw, fh);
+
+  // Gentle wave — two subtle shading bands across the flag
+  for (const waveX of [fw * 0.28, fw * 0.62]) {
+    const wg = ctx.createLinearGradient(flagX + waveX, 0, flagX + waveX + fw * 0.18, 0);
+    wg.addColorStop(0, 'rgba(0,0,0,0)');
+    wg.addColorStop(0.5, 'rgba(0,0,0,0.14)');
+    wg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = wg;
+    ctx.fillRect(flagX + waveX, flagY, fw * 0.18, fh);
   }
 
   return c;

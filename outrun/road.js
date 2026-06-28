@@ -19,12 +19,14 @@ export const TRACK_LENGTH   = NUM_SEGMENTS * SEGMENT_LENGTH;
 const STRIPE = 3;
 
 // Local alias so renderSegment reads naturally.
+// grass/rumble/surface/dash are arrays — the alias shares the same array ref,
+// so mutations like palette.road.grass[0]='...' are visible here automatically.
+// shoulder is a string; read it from palette directly each frame (no alias).
 const COLORS = {
-  grass:    palette.road.grass,
-  rumble:   palette.road.rumble,
-  road:     palette.road.surface,
-  dash:     palette.road.dash,
-  shoulder: palette.road.shoulder,
+  grass:   palette.road.grass,
+  rumble:  palette.road.rumble,
+  road:    palette.road.surface,
+  dash:    palette.road.dash,
 };
 
 // ---- Distance fog --------------------------------------------------------
@@ -45,8 +47,8 @@ export function fogAlpha(dz) {
 // Per-frame projection cache — read by scenery.js, checkpoint.js, opponents.js.
 export const segmentProjections = [];
 
-// Internal draw list — populated by projectRoad, consumed by drawRoad.
-const frameSegs = [];
+// Internal draw list — populated by projectRoad, consumed by drawRoad and webgl-road.
+export const frameSegs = [];
 
 // Frame context for projectObject().
 const _frame = { W: 0, H: 0, playerX: 0, cameraY: CAMERA_HEIGHT };
@@ -278,8 +280,9 @@ function renderSegment(ctx, screenW, p1, p2, color, dz) {
   ctx.fillStyle = COLORS.grass[color];
   ctx.fillRect(0, p2.y, screenW, p1.y - p2.y);
 
-  // Shoulder — narrow sandy strip between grass and rumble
-  ctx.fillStyle = COLORS.shoulder;
+  // Shoulder — narrow strip between grass and rumble; read from palette each frame
+  // so _applyStageColors() can set it to the grass color to hide it on special stages.
+  ctx.fillStyle = palette.road.shoulder;
   polygon(ctx, p1.x - p1.w - r1 - s1, p1.y, p1.x - p1.w - r1, p1.y,
                p2.x - p2.w - r2,       p2.y, p2.x - p2.w - r2 - s2, p2.y);
   polygon(ctx, p1.x + p1.w + r1,       p1.y, p1.x + p1.w + r1 + s1, p1.y,

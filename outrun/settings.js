@@ -7,4 +7,8 @@ export const settings = {
   bloom:         true,
   autoDowngrade: true,
   volume:        0.55,
+  webglRoad:     false,
+  difficulty:    'normal',
+  vehicleIdx:    0,
+  boostsEnabled: true,
 };

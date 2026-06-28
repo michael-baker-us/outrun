@@ -51,9 +51,10 @@ describe('STAGES data', () => {
     }
   });
 
-  test('stage thresholds are in ascending order', () => {
-    for (let i = 1; i < STAGES.length; i++) {
-      expect(STAGES[i].startDistance).toBeGreaterThan(STAGES[i - 1].startDistance);
+  test('regular stage thresholds are in ascending order', () => {
+    const regular = STAGES.filter(s => !s.special);
+    for (let i = 1; i < regular.length; i++) {
+      expect(regular[i].startDistance).toBeGreaterThan(regular[i - 1].startDistance);
     }
   });
 
@@ -65,8 +66,8 @@ describe('STAGES data', () => {
     expect(Array.isArray(STAGES[0].roadOverride?.grass)).toBe(true);
   });
 
-  test('DESERT and CITY have road overrides with grass and surface', () => {
-    for (const stage of STAGES.slice(1)) {
+  test('non-COAST stages have road overrides with grass and surface', () => {
+    for (const stage of STAGES.filter(s => s.name !== 'COAST')) {
       expect(Array.isArray(stage.roadOverride.grass)).toBe(true);
       expect(Array.isArray(stage.roadOverride.surface)).toBe(true);
     }
