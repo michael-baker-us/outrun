@@ -268,8 +268,64 @@ body.touch[data-state="vehicleSelect"] #touch-vehicle-ui { display: flex; }
 }
 .ctl-settings:active { background: rgba(68, 136, 204, 0.5); }
 
-/* Hide game controls during settings and paused states (overlays cover canvas) */
+/* Hide game controls during paused and settings states (overlays cover canvas) */
+body.touch[data-state="paused"]   #controls { display: none !important; }
 body.touch[data-state="settings"] #controls { display: none !important; }
+
+/* ---- Touch pause overlay ---- */
+#touch-pause-ui {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  background: rgba(0, 4, 16, 0.92);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  font-family: monospace;
+}
+
+body.touch[data-state="paused"] #touch-pause-ui { display: flex; }
+
+.tpu-title {
+  font: bold 28px/1 monospace;
+  color: #ffe44d;
+  letter-spacing: 0.16em;
+  margin-bottom: 8px;
+}
+
+.tpu-btn {
+  width: 260px;
+  padding: 18px 0;
+  border: none;
+  border-radius: 8px;
+  font: bold 17px/1 monospace;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tpu-resume {
+  background: #ffe44d;
+  color: #000;
+}
+.tpu-resume:active { background: #ffd000; }
+
+.tpu-settings {
+  background: rgba(68, 136, 204, 0.22);
+  color: #4488cc;
+  border: 1px solid rgba(68, 136, 204, 0.50);
+}
+.tpu-settings:active { background: rgba(68, 136, 204, 0.40); }
+
+.tpu-quit {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.50);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+.tpu-quit:active { background: rgba(255, 255, 255, 0.08); }
 
 /* ---- Touch settings overlay ---- */
 #touch-settings-ui {

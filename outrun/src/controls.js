@@ -10,7 +10,8 @@ import {
   titlePrevStage, titleNextStage,
   titleCycleDifficulty, titleToggleBoosts, titleOpenVehicleSelect,
   vehicleSelectPrev, vehicleSelectNext, vehicleSelectConfirm,
-  openSettings, settingsClose, settingsToggle, settingsVolumeAdjust,
+  openSettings, openPause, pauseResume, pauseQuit,
+  settingsClose, settingsToggle, settingsVolumeAdjust,
 } from './core/game.js';
 import { unlockAudio, setMasterVolume } from './systems/audio.js';
 import { settings } from './core/settings.js';
@@ -200,6 +201,24 @@ function _buildTouchTitleUI() {
   vehicleUI.querySelector('#tvu-prev')   .addEventListener('pointerdown', e => _tap(e, vehicleSelectPrev));
   vehicleUI.querySelector('#tvu-next')   .addEventListener('pointerdown', e => _tap(e, vehicleSelectNext));
   vehicleUI.querySelector('#tvu-confirm').addEventListener('pointerdown', e => _tap(e, vehicleSelectConfirm));
+}
+
+// ---- Touch pause overlay --------------------------------------------------
+
+function _buildTouchPauseUI() {
+  const el = document.createElement('div');
+  el.id = 'touch-pause-ui';
+  el.innerHTML = `
+    <div class="tpu-title">PAUSED</div>
+    <button id="tpu-resume"   class="tpu-btn tpu-resume">&#9654;&nbsp; RESUME</button>
+    <button id="tpu-settings" class="tpu-btn tpu-settings">&#9881;&nbsp; SETTINGS</button>
+    <button id="tpu-quit"     class="tpu-btn tpu-quit">&#8592;&nbsp; QUIT TO TITLE</button>
+  `;
+  document.body.appendChild(el);
+
+  el.querySelector('#tpu-resume')  .addEventListener('pointerdown', e => _tap(e, pauseResume));
+  el.querySelector('#tpu-settings').addEventListener('pointerdown', e => _tap(e, openSettings));
+  el.querySelector('#tpu-quit')    .addEventListener('pointerdown', e => _tap(e, pauseQuit));
 }
 
 // ---- Touch settings overlay -----------------------------------------------
@@ -414,12 +433,15 @@ export function initControls() {
 
   const settingsBtn = document.getElementById('btn-settings');
   if (settingsBtn) {
-    settingsBtn.addEventListener('pointerdown', e => _tap(e, openSettings));
+    // On touch devices the settings button opens the pause menu (resume/settings/quit).
+    // On desktop the button isn't shown, so openSettings for keyboard remains as-is.
+    settingsBtn.addEventListener('pointerdown', e => _tap(e, isTouch ? openPause : openSettings));
   }
 
   // Build the touch overlays on touch devices and start the sync loop.
   if (isTouch) {
     _buildTouchTitleUI();
+    _buildTouchPauseUI();
     _buildTouchSettingsUI();
     _syncTouchUI();
   }

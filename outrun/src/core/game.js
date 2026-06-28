@@ -133,6 +133,27 @@ export function openSettings() {
   setGameState('settings');
 }
 
+export function openPause() {
+  if (getGameState() !== 'playing') return;
+  setGameState('paused');
+  _menuIdx = 0;
+  stopMusic();
+  updateEngineSound(0);
+}
+
+export function pauseResume() {
+  if (getGameState() !== 'paused') return;
+  setGameState('playing');
+  startMusic();
+}
+
+export function pauseQuit() {
+  stopMusic();
+  resetAudio();
+  setGameState('title');
+  resetGame();
+}
+
 export function settingsClose() {
   _saveSettings();
   const ret = _settingsReturn ?? 'title';
