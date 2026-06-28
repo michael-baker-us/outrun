@@ -89,73 +89,39 @@ const _SL_DISTS  = Array.from({ length: _SL_COUNT }, (_, i) => 82 + (i * 31 % 52
 // controls.js imports getState from game.js — delegate to the state machine
 export function getState() { return getGameState(); }
 
-// Hit-test a pointer tap in logical (800×500) coordinates against the current
-// screen and dispatch the appropriate action. Called by controls.js after
-// translating CSS pointer coords → logical coords.
-export function handleCanvasTap(lx, ly) {
-  const state = getGameState();
-  unlockAudio();
+// ---- Touch title-screen actions (called by controls.js DOM overlay) ----------
 
-  if (state === 'title') {
-    // Stage selector band (includes label, name, and dots)
-    if (ly >= 140 && ly < 250) {
-      if (lx < WIDTH / 2) {
-        _selectedStage = (_selectedStage - 1 + STAGES.length) % STAGES.length;
-      } else {
-        _selectedStage = (_selectedStage + 1) % STAGES.length;
-      }
-      _rebuildOpponents();
-      return;
-    }
-    // Difficulty band
-    if (ly >= 250 && ly < 310) {
-      const diffs = Object.keys(DIFFICULTY);
-      const idx = diffs.indexOf(settings.difficulty);
-      settings.difficulty = diffs[(idx + 1) % diffs.length];
-      _saveSettings();
-      return;
-    }
-    // Vehicle hint band (only meaningful for non-special stages)
-    if (ly >= 305 && ly < 330) {
-      const selStage = STAGES[_selectedStage];
-      if (!selStage.special) { _menuIdx = 0; setGameState('vehicleSelect'); }
-      return;
-    }
-    // Boost toggle band
-    if (ly >= 325 && ly < 368) {
-      settings.boostsEnabled = !settings.boostsEnabled;
-      _saveSettings();
-      return;
-    }
-    // Catch-all: start game
-    startGame();
-    return;
-  }
-
-  if (state === 'vehicleSelect') {
-    const selStage = STAGES[_selectedStage];
-    if (!selStage.special) {
-      if (lx < WIDTH * 0.35) {
-        _vehicleSelectIdx = (_vehicleSelectIdx - 1 + PLAYER_VEHICLES.length) % PLAYER_VEHICLES.length;
-        _saveSettings();
-        return;
-      }
-      if (lx > WIDTH * 0.65) {
-        _vehicleSelectIdx = (_vehicleSelectIdx + 1) % PLAYER_VEHICLES.length;
-        _saveSettings();
-        return;
-      }
-    }
-    // Center tap or special-stage tap: back to title
-    setGameState('title');
-    return;
-  }
-
-  if (state === 'gameover') {
-    startGame();
-    return;
-  }
+export function getTitleState() {
+  const stage   = STAGES[_selectedStage] || STAGES[0];
+  const vehicle = PLAYER_VEHICLES[_vehicleSelectIdx] || PLAYER_VEHICLES[0];
+  return {
+    stageIdx:      _selectedStage,
+    stageCount:    STAGES.length,
+    stageName:     stage.name,
+    stageColor:    stage.special ? '#ff88ff' : '#ffe44d',
+    isSpecial:     !!stage.special,
+    difficulty:    settings.difficulty,
+    vehicleName:   stage.special ? (stage.playerVehicle || '').toUpperCase() : vehicle.name,
+    vehicleColor:  stage.special ? (stage.playerColor || '#88aaff') : vehicle.color,
+    vehicleDesc:   vehicle.desc,
+    boostsEnabled: settings.boostsEnabled,
+    vehicleIdx:    _vehicleSelectIdx,
+    vehicleCount:  PLAYER_VEHICLES.length,
+  };
 }
+
+export function titlePrevStage()      { _selectedStage = (_selectedStage - 1 + STAGES.length) % STAGES.length; _rebuildOpponents(); }
+export function titleNextStage()      { _selectedStage = (_selectedStage + 1) % STAGES.length; _rebuildOpponents(); }
+export function titleCycleDifficulty() {
+  const diffs = Object.keys(DIFFICULTY);
+  settings.difficulty = diffs[(diffs.indexOf(settings.difficulty) + 1) % diffs.length];
+  _saveSettings();
+}
+export function titleToggleBoosts()   { settings.boostsEnabled = !settings.boostsEnabled; _saveSettings(); }
+export function titleOpenVehicleSelect() { if (!STAGES[_selectedStage]?.special) { _menuIdx = 0; setGameState('vehicleSelect'); } }
+export function vehicleSelectPrev()   { _vehicleSelectIdx = (_vehicleSelectIdx - 1 + PLAYER_VEHICLES.length) % PLAYER_VEHICLES.length; _saveSettings(); }
+export function vehicleSelectNext()   { _vehicleSelectIdx = (_vehicleSelectIdx + 1) % PLAYER_VEHICLES.length; _saveSettings(); }
+export function vehicleSelectConfirm() { setGameState('title'); }
 
 // ---- Public API -------------------------------------------------------------
 

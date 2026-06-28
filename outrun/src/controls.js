@@ -1,10 +1,17 @@
 // Touch/tilt controls: maps on-screen buttons and device tilt to the same
 // `keys` object the keyboard uses. Also polls the Gamepad API at ~60 Hz.
+// On touch devices, builds a DOM overlay for the title / vehicle-select screens
+// so options have proper large tap targets instead of tiny canvas hit zones.
 
 import { keys, setTiltSteer } from './world/car.js';
-import { startGame, getState, handleCanvasTap } from './core/game.js';
+import {
+  startGame, getState,
+  getTitleState,
+  titlePrevStage, titleNextStage,
+  titleCycleDifficulty, titleToggleBoosts, titleOpenVehicleSelect,
+  vehicleSelectPrev, vehicleSelectNext, vehicleSelectConfirm,
+} from './core/game.js';
 import { unlockAudio } from './systems/audio.js';
-import { WIDTH, HEIGHT } from './rendering/renderer.js';
 
 // ---- Tilt steering --------------------------------------------------------
 
@@ -73,7 +80,9 @@ function bind(id, key) {
     e.preventDefault();
     unlockAudio();
     const state = getState();
-    if (state === 'gameover' || state === 'title') { startGame(); return; }
+    // Title/vehicleSelect: the DOM overlay handles interaction; game buttons do nothing.
+    if (state === 'title' || state === 'vehicleSelect') return;
+    if (state === 'gameover') { startGame(); return; }
     if (state === 'paused' || state === 'settings') return;
     keys[key] = true;
     el.classList.add('active');
@@ -113,6 +122,147 @@ function _pollGamepad() {
   keys['ArrowDown']  = !!(pad.buttons[2]?.pressed) || !!(pad.buttons[6]?.pressed); // X / LT
 }
 
+// ---- Touch title-screen overlay -------------------------------------------
+// Only built on touch devices. Provides large tap targets for stage, difficulty,
+// vehicle, and boost options so users don't have to hit tiny canvas text.
+
+const DIFF_COLORS = { easy: '#44ff88', normal: '#ffe44d', hard: '#ff4444' };
+
+function _tap(e, fn) {
+  e.preventDefault();
+  e.stopPropagation();
+  unlockAudio();
+  fn();
+}
+
+function _buildTouchTitleUI() {
+  // Title screen overlay
+  const titleUI = document.createElement('div');
+  titleUI.id = 'touch-title-ui';
+  titleUI.innerHTML = `
+    <div class="ttu-stage-row">
+      <button id="ttu-prev"  class="ttu-arrow">&#9664;</button>
+      <div class="ttu-stage-info">
+        <span id="ttu-stage-name" class="ttu-stage-name"></span>
+        <div id="ttu-dots" class="ttu-dots"></div>
+      </div>
+      <button id="ttu-next"  class="ttu-arrow">&#9654;</button>
+    </div>
+    <div class="ttu-opts">
+      <button id="ttu-diff"    class="ttu-opt"></button>
+      <button id="ttu-vehicle" class="ttu-opt"></button>
+      <button id="ttu-boost"   class="ttu-opt"></button>
+    </div>
+    <button id="ttu-race" class="ttu-race">&#9654;&nbsp; RACE</button>
+  `;
+  document.body.appendChild(titleUI);
+
+  titleUI.querySelector('#ttu-prev')   .addEventListener('pointerdown', e => _tap(e, titlePrevStage));
+  titleUI.querySelector('#ttu-next')   .addEventListener('pointerdown', e => _tap(e, titleNextStage));
+  titleUI.querySelector('#ttu-diff')   .addEventListener('pointerdown', e => _tap(e, titleCycleDifficulty));
+  titleUI.querySelector('#ttu-vehicle').addEventListener('pointerdown', e => _tap(e, titleOpenVehicleSelect));
+  titleUI.querySelector('#ttu-boost')  .addEventListener('pointerdown', e => _tap(e, titleToggleBoosts));
+  titleUI.querySelector('#ttu-race')   .addEventListener('pointerdown', e => _tap(e, startGame));
+
+  // Vehicle select overlay
+  const vehicleUI = document.createElement('div');
+  vehicleUI.id = 'touch-vehicle-ui';
+  vehicleUI.innerHTML = `
+    <div class="ttu-header">SELECT VEHICLE</div>
+    <div class="ttu-stage-row">
+      <button id="tvu-prev"  class="ttu-arrow">&#9664;</button>
+      <div class="ttu-stage-info">
+        <span id="tvu-name" class="ttu-stage-name"></span>
+        <span id="tvu-desc" class="tvu-desc"></span>
+        <div id="tvu-dots" class="ttu-dots"></div>
+      </div>
+      <button id="tvu-next"  class="ttu-arrow">&#9654;</button>
+    </div>
+    <button id="tvu-confirm" class="ttu-race">&#10003;&nbsp; CONFIRM</button>
+  `;
+  document.body.appendChild(vehicleUI);
+
+  vehicleUI.querySelector('#tvu-prev')   .addEventListener('pointerdown', e => _tap(e, vehicleSelectPrev));
+  vehicleUI.querySelector('#tvu-next')   .addEventListener('pointerdown', e => _tap(e, vehicleSelectNext));
+  vehicleUI.querySelector('#tvu-confirm').addEventListener('pointerdown', e => _tap(e, vehicleSelectConfirm));
+}
+
+// rAF loop: keeps overlay content and body[data-state] in sync with game state.
+function _syncTouchUI() {
+  const state = getState();
+  document.body.dataset.state = state;
+
+  if (state === 'title') {
+    const ts = getTitleState();
+
+    const nameEl  = document.getElementById('ttu-stage-name');
+    const dotsEl  = document.getElementById('ttu-dots');
+    const diffEl  = document.getElementById('ttu-diff');
+    const vehEl   = document.getElementById('ttu-vehicle');
+    const boostEl = document.getElementById('ttu-boost');
+
+    if (nameEl) { nameEl.textContent = ts.stageName; nameEl.style.color = ts.stageColor; }
+
+    if (dotsEl) {
+      if (dotsEl.children.length !== ts.stageCount) {
+        dotsEl.innerHTML = '';
+        for (let i = 0; i < ts.stageCount; i++) {
+          const d = document.createElement('span');
+          d.className = 'ttu-dot';
+          dotsEl.appendChild(d);
+        }
+      }
+      Array.from(dotsEl.children).forEach((d, i) => {
+        d.style.background = i === ts.stageIdx ? ts.stageColor : 'rgba(255,255,255,0.25)';
+      });
+    }
+
+    if (diffEl) {
+      diffEl.textContent = `DIFFICULTY: ${ts.difficulty.toUpperCase()}`;
+      diffEl.style.color = DIFF_COLORS[ts.difficulty] || '#ffe44d';
+    }
+
+    if (vehEl) {
+      vehEl.textContent = `VEHICLE: ${ts.vehicleName}`;
+      vehEl.style.color  = ts.vehicleColor;
+      vehEl.disabled     = ts.isSpecial;
+      vehEl.style.opacity = ts.isSpecial ? '0.38' : '1';
+    }
+
+    if (boostEl) {
+      boostEl.textContent = `BOOSTS: ${ts.boostsEnabled ? 'ON' : 'OFF'}`;
+      boostEl.style.color = ts.boostsEnabled ? '#55ff88' : 'rgba(255,255,255,0.38)';
+    }
+  }
+
+  if (state === 'vehicleSelect') {
+    const ts = getTitleState();
+
+    const nameEl = document.getElementById('tvu-name');
+    const descEl = document.getElementById('tvu-desc');
+    const dotsEl = document.getElementById('tvu-dots');
+
+    if (nameEl) { nameEl.textContent = ts.vehicleName; nameEl.style.color = ts.vehicleColor; }
+    if (descEl) { descEl.textContent = ts.vehicleDesc; }
+
+    if (dotsEl) {
+      if (dotsEl.children.length !== ts.vehicleCount) {
+        dotsEl.innerHTML = '';
+        for (let i = 0; i < ts.vehicleCount; i++) {
+          const d = document.createElement('span');
+          d.className = 'ttu-dot';
+          dotsEl.appendChild(d);
+        }
+      }
+      Array.from(dotsEl.children).forEach((d, i) => {
+        d.style.background = i === ts.vehicleIdx ? ts.vehicleColor : 'rgba(255,255,255,0.25)';
+      });
+    }
+  }
+
+  requestAnimationFrame(_syncTouchUI);
+}
+
 // ---- Init -----------------------------------------------------------------
 
 export function initControls() {
@@ -147,17 +297,22 @@ export function initControls() {
     });
   }
 
+  // Canvas tap: only used for gameover state. Title/vehicleSelect handled by DOM overlay.
   const gameCanvas = document.getElementById('game');
   if (gameCanvas) {
     gameCanvas.addEventListener('pointerdown', (e) => {
       const state = getState();
-      if (state !== 'title' && state !== 'vehicleSelect' && state !== 'gameover') return;
+      if (state !== 'gameover') return;
       e.preventDefault();
-      const rect = gameCanvas.getBoundingClientRect();
-      const lx = (e.clientX - rect.left) / rect.width  * WIDTH;
-      const ly = (e.clientY - rect.top)  / rect.height * HEIGHT;
-      handleCanvasTap(lx, ly);
+      unlockAudio();
+      startGame();
     });
+  }
+
+  // Build the touch title overlay on touch devices and start the sync loop.
+  if (isTouch) {
+    _buildTouchTitleUI();
+    _syncTouchUI();
   }
 
   // Gamepad: self-contained 60 Hz poll so game.js doesn't need to call us.

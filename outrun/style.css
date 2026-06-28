@@ -125,3 +125,131 @@ body.tilt #tilt-meter {
 }
 .ctl-gas.active { background: rgba(60, 220, 60, 0.5); }
 .ctl-tilt.on    { background: rgba(120, 200, 255, 0.5); border-color: #8cf; }
+
+/* ---- Touch title / vehicle-select overlay ---- */
+
+/* Hide game buttons while the title overlay is active */
+body.touch[data-state="title"] #controls,
+body.touch[data-state="vehicleSelect"] #controls { display: none !important; }
+
+#touch-title-ui,
+#touch-vehicle-ui {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 480px;
+  padding: 14px 18px calc(18px + env(safe-area-inset-bottom, 0px));
+  z-index: 20;
+  background: rgba(0, 4, 16, 0.90);
+  border-top: 1px solid rgba(255, 228, 77, 0.30);
+  flex-direction: column;
+  gap: 10px;
+  font-family: monospace;
+}
+
+body.touch[data-state="title"]        #touch-title-ui   { display: flex; }
+body.touch[data-state="vehicleSelect"] #touch-vehicle-ui { display: flex; }
+
+.ttu-header {
+  text-align: center;
+  font: bold 14px/1 monospace;
+  color: #ffe44d;
+  letter-spacing: 0.12em;
+  margin-bottom: 2px;
+}
+
+.ttu-stage-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ttu-stage-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.ttu-stage-name {
+  font: bold 20px/1 monospace;
+  color: #ffe44d;
+}
+
+.ttu-dots {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.ttu-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.25);
+}
+
+.ttu-arrow {
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.40);
+  background: rgba(255, 255, 255, 0.10);
+  color: #fff;
+  font: bold 22px/1 monospace;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+
+.ttu-arrow:active { background: rgba(255,255,255,0.28); }
+
+.ttu-opts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ttu-opt {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffe44d;
+  font: bold 13px/1 monospace;
+  text-align: center;
+  touch-action: none;
+  letter-spacing: 0.06em;
+}
+
+.ttu-opt:active:not(:disabled) { background: rgba(255,255,255,0.18); }
+.ttu-opt:disabled { cursor: default; }
+
+.tvu-desc {
+  font: 11px/1.3 monospace;
+  color: rgba(255,255,255,0.45);
+  text-align: center;
+}
+
+.ttu-race {
+  width: 100%;
+  padding: 15px;
+  border: 2px solid #ffe44d;
+  border-radius: 8px;
+  background: rgba(255, 228, 77, 0.14);
+  color: #ffe44d;
+  font: bold 17px/1 monospace;
+  text-align: center;
+  letter-spacing: 0.10em;
+  touch-action: none;
+}
+
+.ttu-race:active { background: rgba(255, 228, 77, 0.35); }
