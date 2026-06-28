@@ -1,35 +1,70 @@
 // Pseudo-3D road renderer using projected trapezoid segments.
-// Each segment is projected near→far; the road is drawn as quads between
-// successive projected points, with curve accumulated across the draw distance.
+//
+// Two-pass design (Phase 2+):
+//   projectRoad() — pass 1: projection only. Populates segmentProjections[]
+//                   and frameSegs[]. Must be called once per frame before any
+//                   other rendering (sky.js reads segmentProjections for parallax).
+//   drawRoad()    — pass 2: draw the road geometry onto ctx. No projection work.
 
-const SEGMENT_LENGTH = 200;
-const NUM_SEGMENTS   = 500;  // longer track -> more variety before it repeats
+import { palette } from './palette.js';
+
+export const SEGMENT_LENGTH = 200;
+export const NUM_SEGMENTS   = 500;
 const CAMERA_HEIGHT  = 1000;
-const CAMERA_DEPTH   = 0.84;  // ~1/tan(FOV/2)
-const ROAD_WIDTH     = 2000;  // world half-width of the road
-const DRAW_DISTANCE  = 120;   // segments drawn per frame
-const TRACK_LENGTH   = NUM_SEGMENTS * SEGMENT_LENGTH;
+const CAMERA_DEPTH   = 0.84;
+const ROAD_WIDTH     = 2000;
+export const DRAW_DISTANCE  = 120;
+export const TRACK_LENGTH   = NUM_SEGMENTS * SEGMENT_LENGTH;
 
-const STRIPE = 3; // segments per alternating color block (coarser = scrolls, doesn't strobe)
+const STRIPE = 3;
 
+// Local alias so renderSegment reads naturally.
+// grass/rumble/surface/dash are arrays — the alias shares the same array ref,
+// so mutations like palette.road.grass[0]='...' are visible here automatically.
+// shoulder is a string; read it from palette directly each frame (no alias).
 const COLORS = {
-  // Low contrast between the two shades so the alternation reads as gentle
-  // motion rather than a per-frame strobe. Rumble stays vivid (edges only).
-  grass:  ['#1ba62b', '#149d22'],
-  rumble: ['#cc2b2b', '#efefef'],
-  road:   ['#8a8a8a', '#848484'],
-  dash:   ['#ffffff', null],
+  grass:   palette.road.grass,
+  rumble:  palette.road.rumble,
+  road:    palette.road.surface,
+  dash:    palette.road.dash,
 };
 
-// Per-frame projection cache for visible segments, in near->far order (ascending dz).
-// Each entry: { segIdx, dz, curveX, screenY, roadX, roadW, scale }.
-// curveX is the road centerline's world-x at that segment (for following curves).
-const segmentProjections = [];
+// ---- Distance fog --------------------------------------------------------
+// Fog blends road, scenery, and traffic toward palette.sky.fog as dz increases,
+// removing the hard "pop-in" at the draw distance boundary.
+const FOG_NEAR = DRAW_DISTANCE * SEGMENT_LENGTH * 0.25;  // fog starts at 25% draw distance
+const FOG_FAR  = DRAW_DISTANCE * SEGMENT_LENGTH * 0.88;  // fully fogged at 88%
 
-// Frame context captured by drawRoad so projectObject() can place sprites/cars.
+// Returns a 0..1 fog opacity for an object at camera depth `dz`.
+export function fogAlpha(dz) {
+  if (dz <= FOG_NEAR) return 0;
+  if (dz >= FOG_FAR)  return 1;
+  return (dz - FOG_NEAR) / (FOG_FAR - FOG_NEAR);
+}
+
+// ---- Shared frame state --------------------------------------------------
+
+// Per-frame projection cache — read by scenery.js, checkpoint.js, opponents.js.
+export const segmentProjections = [];
+
+// Internal draw list — populated by projectRoad, consumed by drawRoad and webgl-road.
+export const frameSegs = [];
+
+// Frame context for projectObject().
 const _frame = { W: 0, H: 0, playerX: 0, cameraY: CAMERA_HEIGHT };
 
-// Linearly interpolate a stored per-segment field (curveX / elev) at depth dz.
+// ---- projectObject -------------------------------------------------------
+// Project a non-segment object at exact depth `dz`, lateral `offset` (road half-widths).
+export function projectObject(dz, offset) {
+  if (dz <= CAMERA_DEPTH) return null;
+  const scale = CAMERA_DEPTH / dz;
+  const W = _frame.W, H = _frame.H;
+  const w = scale * ROAD_WIDTH * W / 2;
+  const centerX = W / 2 + scale * (interpByDepth(dz, 'curveX') - _frame.playerX * ROAD_WIDTH) * W / 2;
+  const y = H / 2 - scale * (interpByDepth(dz, 'elev') - _frame.cameraY) * H / 2;
+  return { x: centerX + offset * w, y, w, scale, clip: interpByDepth(dz, 'clip') };
+}
+
 function interpByDepth(dz, field) {
   const sp = segmentProjections;
   if (sp.length === 0) return 0;
@@ -44,40 +79,20 @@ function interpByDepth(dz, field) {
   return sp[sp.length - 1][field];
 }
 
-// Project an object (car/sprite) from its exact camera depth `dz` and lateral
-// `offset` (in road half-widths). Continuous in dz -> no segment-snapping stutter.
-// Rides the road's curve and elevation at that depth.
-function projectObject(dz, offset) {
-  if (dz <= CAMERA_DEPTH) return null;
-  const scale = CAMERA_DEPTH / dz;
-  const W = _frame.W, H = _frame.H;
-  const w = scale * ROAD_WIDTH * W / 2;
-  const centerX = W / 2 + scale * (interpByDepth(dz, 'curveX') - _frame.playerX * ROAD_WIDTH) * W / 2;
-  const y = H / 2 - scale * (interpByDepth(dz, 'elev') - _frame.cameraY) * H / 2;
-  // clip = screen Y of the highest nearer terrain; sprites below it are hidden by a hill.
-  return { x: centerX + offset * w, y, w, scale, clip: interpByDepth(dz, 'clip') };
+// Returns the accumulated lateral curve offset of the farthest visible segment.
+// sky.js uses this to drive parallax scrolling.
+export function getHorizonCurveX() {
+  if (segmentProjections.length === 0) return 0;
+  return segmentProjections[segmentProjections.length - 1].curveX;
 }
 
-let _skyGrad = null;
-function drawSky(ctx, screenW, screenH) {
-  if (!_skyGrad) {
-    _skyGrad = ctx.createLinearGradient(0, 0, 0, screenH / 2);
-    _skyGrad.addColorStop(0,   '#1a4d8f');
-    _skyGrad.addColorStop(0.6, '#72d7ee');
-    _skyGrad.addColorStop(1,   '#ffd9a0');
-  }
-  ctx.fillStyle = _skyGrad;
-  ctx.fillRect(0, 0, screenW, screenH / 2);
-}
+// ---- Track generation ----------------------------------------------------
 
-// Curve strengths (curvature added per segment while turning).
 const CURVE = { gentle: 1.5, medium: 3, hard: 4.5 };
-const HILL  = { low: 650, med: 1150, high: 1650 }; // crest/dip heights in world units
-
+const HILL  = { low: 650, med: 1150, high: 1650 };
 const easeCurve = (a, b, p) => a + (b - a) * (1 - Math.cos(p * Math.PI)) / 2;
 
-// Mulberry32 seeded PRNG -> deterministic tracks from a seed.
-function makeRng(seed) {
+export function makeRng(seed) {
   let s = seed >>> 0;
   return function () {
     s = (s + 0x6D2B79F5) | 0;
@@ -87,8 +102,6 @@ function makeRng(seed) {
   };
 }
 
-// Apply a smooth curve onto the track: ease in to `curve`, hold, ease back to 0.
-// Easing the ends keeps straights and curves from meeting at a kink.
 function addCurve(segs, start, enter, hold, leave, curve) {
   let n = start;
   for (let k = 0; k < enter && n < NUM_SEGMENTS; k++, n++) segs[n].curve = easeCurve(0, curve, k / enter);
@@ -97,8 +110,6 @@ function addCurve(segs, start, enter, hold, leave, curve) {
   return n;
 }
 
-// A self-contained hill: elevation rises (or falls) to `height` at the middle and
-// returns to 0 at both ends, so it never leaves a vertical step at the seam.
 function addHill(segs, start, len, height) {
   for (let k = 0; k < len && start + k < NUM_SEGMENTS; k++) {
     segs[start + k].y = height * Math.sin((k / len) * Math.PI);
@@ -106,47 +117,69 @@ function addHill(segs, start, len, height) {
   return start + len;
 }
 
-function buildSegments(seed) {
+// Deterministic sprite variety by segment index — avoids consuming the
+// seeded RNG so curve/hill layout is unchanged when sprite density changes.
+function _sh(i) { return (i * 2654435761 + 1234567891) >>> 0; }  // Knuth hash
+
+function _segSprites(i) {
+  const h = _sh(i);
+  const sprites = [];
+
+  // Primary layer: one sprite every 7 segments, alternating sides
+  if (i % 7 === 0) {
+    const side = (i % 14 === 0) ? -1 : 1;
+    if (i % 49 === 0) {
+      // Billboard every 49 segments
+      sprites.push({ type: `billboard-${h % 3}`, offset: side * 2.2 });
+    } else {
+      // Tree type: pine 50%, palm 25%, poplar 25%
+      const t = (h >> 4) & 7;
+      const type = t < 4 ? 'pine' : t < 6 ? 'palm' : 'poplar';
+      sprites.push({ type, offset: side * (2.6 + ((h >> 12) & 7) * 0.1) });
+    }
+  }
+
+  // Secondary layer: farther out, less frequent
+  if (i % 11 === 0) {
+    const side = (i % 22 === 0) ? 1 : -1;
+    const t = (h >> 16) & 7;
+    const type = t < 3 ? 'pine' : t < 6 ? 'palm' : 'poplar';
+    sprites.push({ type, offset: side * (3.6 + ((h >> 20) & 3) * 0.2) });
+  }
+
+  // Rocks and bushes near the roadside
+  if (i % 17 === 0 && ((h >> 24) & 3) > 0) {
+    const side = (h >> 26) & 1 ? 1 : -1;
+    const type = (h >> 22) & 1 ? 'rock' : 'bush';
+    sprites.push({ type, offset: side * (2.0 + ((h >> 18) & 3) * 0.15) });
+  }
+
+  return sprites;
+}
+
+export function buildSegments(seed) {
   const rng  = makeRng(seed >>> 0);
   const rnd  = (min, max) => min + Math.floor(rng() * (max - min + 1));
   const segs = [];
 
   for (let i = 0; i < NUM_SEGMENTS; i++) {
-    // Roadside scenery: trees with occasional billboards (kept sparse to
-    // avoid a crowded, shimmering treeline at the horizon).
-    const sprites = [];
-    if (i % 8 === 0) {
-      const side = (i % 16 === 0) ? -1 : 1;
-      const type = (i % 24 === 0) ? 'billboard' : 'tree';
-      sprites.push({ type, offset: side * (type === 'billboard' ? 2.2 : 2.8) });
-    }
-    if (i % 13 === 0) {
-      sprites.push({ type: 'tree', offset: (i % 26 === 0 ? 1 : -1) * 3.6 });
-    }
-    segs.push({ curve: 0, y: 0, color: Math.floor(i / STRIPE) % 2, sprites });
+    segs.push({ curve: 0, y: 0, color: Math.floor(i / STRIPE) % 2, sprites: _segSprites(i) });
   }
 
-  // Curve features: straights interleaved with a mix of curves. Leave a short
-  // straight tail so the loop seam (last segment -> first) stays smooth.
   let i = rnd(6, 14);
   while (i < NUM_SEGMENTS - 12) {
     const dir = rng() < 0.5 ? -1 : 1;
     const roll = rng();
-    if (roll < 0.34) {
-      i = addCurve(segs, i, rnd(6, 10), rnd(24, 44), rnd(6, 10), CURVE.gentle * dir); // long sweeper
-    } else if (roll < 0.62) {
-      i = addCurve(segs, i, rnd(4, 8), rnd(12, 22), rnd(4, 8), CURVE.medium * dir);   // medium curve
-    } else if (roll < 0.82) {
-      i = addCurve(segs, i, rnd(3, 5), rnd(6, 12), rnd(3, 5), CURVE.hard * dir);      // sharp twist
-    } else {
-      i = addCurve(segs, i, rnd(3, 5), rnd(8, 14), rnd(3, 4), CURVE.medium * dir);    // S-curve...
-      i = addCurve(segs, i, rnd(3, 4), rnd(8, 14), rnd(3, 5), CURVE.medium * -dir);   // ...the other way
+    if (roll < 0.34)      i = addCurve(segs, i, rnd(6, 10), rnd(24, 44), rnd(6, 10), CURVE.gentle * dir);
+    else if (roll < 0.62) i = addCurve(segs, i, rnd(4, 8),  rnd(12, 22), rnd(4, 8),  CURVE.medium * dir);
+    else if (roll < 0.82) i = addCurve(segs, i, rnd(3, 5),  rnd(6, 12),  rnd(3, 5),  CURVE.hard * dir);
+    else {
+      i = addCurve(segs, i, rnd(3, 5), rnd(8, 14), rnd(3, 4), CURVE.medium * dir);
+      i = addCurve(segs, i, rnd(3, 4), rnd(8, 14), rnd(3, 5), CURVE.medium * -dir);
     }
     i += rnd(6, 18);
   }
 
-  // Hill features: fewer but more pronounced crests/dips, with long flat gaps
-  // between them (weighted toward the bigger magnitudes).
   let h = rnd(20, 50);
   while (h < NUM_SEGMENTS - 18) {
     const r = rng();
@@ -158,8 +191,8 @@ function buildSegments(seed) {
   return segs;
 }
 
-// Project a road point at world depth `worldZ` and elevation `worldY`, given the
-// camera's world-x/y. Returns screen-space x/y/width + scale.
+// ---- Projection helpers --------------------------------------------------
+
 function project(worldZ, worldY, cameraXWorld, cameraZ, cameraY, screenW, screenH) {
   const camZ  = worldZ - cameraZ;
   const scale = CAMERA_DEPTH / camZ;
@@ -169,23 +202,91 @@ function project(worldZ, worldY, cameraXWorld, cameraZ, cameraY, screenW, screen
   return { camZ, scale, x, y, w };
 }
 
+// ---- Pass 1: project -------------------------------------------------------
+// Call once per frame before any drawing. Populates segmentProjections + frameSegs.
+
+export function projectRoad(segments, position, playerX, screenW, screenH) {
+  _frame.W = screenW; _frame.H = screenH; _frame.playerX = playerX;
+  segmentProjections.length = 0;
+  frameSegs.length = 0;
+
+  const baseIndex   = Math.floor(position / SEGMENT_LENGTH) % NUM_SEGMENTS;
+  const basePercent = (position % SEGMENT_LENGTH) / SEGMENT_LENGTH;
+
+  const baseY = segments[baseIndex].y;
+  const nextY = segments[(baseIndex + 1) % NUM_SEGMENTS].y;
+  const cameraY = CAMERA_HEIGHT + baseY + (nextY - baseY) * basePercent;
+  _frame.cameraY = cameraY;
+
+  let x  = 0;
+  let dx = -(segments[baseIndex].curve * basePercent);
+
+  let maxy = screenH;
+  for (let n = 0; n < DRAW_DISTANCE; n++) {
+    const i = (baseIndex + n) % NUM_SEGMENTS;
+    const seg = segments[i];
+    const nextSeg = segments[(i + 1) % NUM_SEGMENTS];
+    const looped = i < baseIndex;
+    const camZ = position - (looped ? TRACK_LENGTH : 0);
+    const curveX = x;
+
+    const p1 = project(i * SEGMENT_LENGTH,       seg.y,     playerX * ROAD_WIDTH - x,      camZ, cameraY, screenW, screenH);
+    const p2 = project((i + 1) * SEGMENT_LENGTH, nextSeg.y, playerX * ROAD_WIDTH - x - dx, camZ, cameraY, screenW, screenH);
+
+    x  += dx;
+    dx += seg.curve;
+
+    if (p1.camZ <= CAMERA_DEPTH) continue;
+
+    const clip = maxy;
+    maxy = Math.min(maxy, p2.y);
+
+    frameSegs.push({ segIdx: i, p1, p2, color: seg.color, dz: p1.camZ, curveX });
+    segmentProjections.push({ segIdx: i, dz: p1.camZ, curveX, elev: seg.y, clip,
+                              screenY: p1.y, roadX: p1.x, roadW: p1.w, scale: p1.scale });
+  }
+}
+
+// ---- Pass 2: draw --------------------------------------------------------
+// Draws the grass base + road segments. projectRoad must have been called first.
+
+export function drawRoad(ctx, segments, screenW, screenH) {
+  // Base grass — covers the lower half before road segments paint over it.
+  ctx.fillStyle = COLORS.grass[0];
+  ctx.fillRect(0, screenH / 2, screenW, screenH / 2);
+
+  // Far-to-near so nearer quads overdraw farther ones (painter's algorithm).
+  for (let k = frameSegs.length - 1; k >= 0; k--) {
+    const f = frameSegs[k];
+    renderSegment(ctx, screenW, f.p1, f.p2, f.color, f.dz);
+  }
+}
+
+// ---- Segment renderer ----------------------------------------------------
+
 function polygon(ctx, x1, y1, x2, y2, x3, y3, x4, y4) {
   ctx.beginPath();
-  ctx.moveTo(x1, y1);
-  ctx.lineTo(x2, y2);
-  ctx.lineTo(x3, y3);
-  ctx.lineTo(x4, y4);
+  ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(x3, y3); ctx.lineTo(x4, y4);
   ctx.closePath();
   ctx.fill();
 }
 
-function renderSegment(ctx, screenW, p1, p2, color) {
-  const r1 = p1.w / 6,  r2 = p2.w / 6;   // rumble strip width
-  const l1 = p1.w / 32, l2 = p2.w / 32;  // lane dash width
+function renderSegment(ctx, screenW, p1, p2, color, dz) {
+  const r1 = p1.w / 6,  r2 = p2.w / 6;   // rumble strip half-width
+  const l1 = p1.w / 32, l2 = p2.w / 32;  // lane dash half-width
+  const s1 = p1.w / 18, s2 = p2.w / 18;  // shoulder half-width
 
-  // Grass band (full width)
+  // Grass band (full screen width)
   ctx.fillStyle = COLORS.grass[color];
   ctx.fillRect(0, p2.y, screenW, p1.y - p2.y);
+
+  // Shoulder — narrow strip between grass and rumble; read from palette each frame
+  // so _applyStageColors() can set it to the grass color to hide it on special stages.
+  ctx.fillStyle = palette.road.shoulder;
+  polygon(ctx, p1.x - p1.w - r1 - s1, p1.y, p1.x - p1.w - r1, p1.y,
+               p2.x - p2.w - r2,       p2.y, p2.x - p2.w - r2 - s2, p2.y);
+  polygon(ctx, p1.x + p1.w + r1,       p1.y, p1.x + p1.w + r1 + s1, p1.y,
+               p2.x + p2.w + r2 + s2,  p2.y, p2.x + p2.w + r2,       p2.y);
 
   // Rumble strips
   ctx.fillStyle = COLORS.rumble[color];
@@ -196,69 +297,18 @@ function renderSegment(ctx, screenW, p1, p2, color) {
   ctx.fillStyle = COLORS.road[color];
   polygon(ctx, p1.x - p1.w, p1.y, p1.x + p1.w, p1.y, p2.x + p2.w, p2.y, p2.x - p2.w, p2.y);
 
-  // Center lane dashes
+  // Lane dashes
   if (COLORS.dash[color]) {
     ctx.fillStyle = COLORS.dash[color];
     polygon(ctx, p1.x - l1, p1.y, p1.x + l1, p1.y, p2.x + l2, p2.y, p2.x - l2, p2.y);
   }
-}
 
-function drawRoad(ctx, segments, position, playerX, screenW, screenH) {
-  drawSky(ctx, screenW, screenH);
-  // Base grass fill for the lower half so there are no seams behind the road.
-  ctx.fillStyle = COLORS.grass[0];
-  ctx.fillRect(0, screenH / 2, screenW, screenH / 2);
-
-  _frame.W = screenW; _frame.H = screenH; _frame.playerX = playerX;
-  segmentProjections.length = 0;
-
-  const baseIndex   = Math.floor(position / SEGMENT_LENGTH) % NUM_SEGMENTS;
-  const basePercent = (position % SEGMENT_LENGTH) / SEGMENT_LENGTH;
-
-  // Camera rides the road's elevation at its current position.
-  const baseY = segments[baseIndex].y;
-  const nextY = segments[(baseIndex + 1) % NUM_SEGMENTS].y;
-  const cameraY = CAMERA_HEIGHT + baseY + (nextY - baseY) * basePercent;
-  _frame.cameraY = cameraY;
-
-  let x  = 0;
-  let dx = -(segments[baseIndex].curve * basePercent);
-
-  // Pass 1: project every segment near->far, accumulating curve. Only segments
-  // behind the camera are dropped -- no occlusion cull on the road itself, so
-  // the set is stable frame-to-frame (the old cull flickered far segments).
-  // `maxy` tracks the highest road silhouette so far -> the clip line that
-  // sprites use to hide behind hills (the road overdraws itself for free).
-  const frameSegs = [];
-  let maxy = screenH;
-  for (let n = 0; n < DRAW_DISTANCE; n++) {
-    const i = (baseIndex + n) % NUM_SEGMENTS;
-    const seg = segments[i];
-    const nextSeg = segments[(i + 1) % NUM_SEGMENTS];
-    const looped = i < baseIndex;
-    const camZ = position - (looped ? TRACK_LENGTH : 0);
-    const curveX = x; // road centerline world-x at this segment's near edge
-
-    const p1 = project(i * SEGMENT_LENGTH,       seg.y,     playerX * ROAD_WIDTH - x,      camZ, cameraY, screenW, screenH);
-    const p2 = project((i + 1) * SEGMENT_LENGTH, nextSeg.y, playerX * ROAD_WIDTH - x - dx, camZ, cameraY, screenW, screenH);
-
-    x  += dx;
-    dx += seg.curve;
-
-    if (p1.camZ <= CAMERA_DEPTH) continue; // behind the camera only
-
-    const clip = maxy;                 // occlusion from nearer terrain
-    maxy = Math.min(maxy, p2.y);       // this segment's top raises the silhouette
-
-    frameSegs.push({ segIdx: i, p1, p2, color: seg.color, dz: p1.camZ, curveX });
-    segmentProjections.push({ segIdx: i, dz: p1.camZ, curveX, elev: seg.y, clip,
-                              screenY: p1.y, roadX: p1.x, roadW: p1.w, scale: p1.scale });
-  }
-
-  // Pass 2: draw far->near so nearer trapezoids overdraw farther ones (painter's
-  // algorithm). No conditional culling means no flicker.
-  for (let k = frameSegs.length - 1; k >= 0; k--) {
-    const f = frameSegs[k];
-    renderSegment(ctx, screenW, f.p1, f.p2, f.color);
+  // Distance fog overlay — blends this band toward the horizon haze color
+  const fog = fogAlpha(dz);
+  if (fog > 0.004) {
+    ctx.globalAlpha = fog;
+    ctx.fillStyle = palette.sky.fog;
+    ctx.fillRect(0, p2.y, screenW, p1.y - p2.y);
+    ctx.globalAlpha = 1;
   }
 }

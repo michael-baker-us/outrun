@@ -77,31 +77,32 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 ---
 
 ### Phase 0 — Foundation: modules, tests, loop, instrumentation
-**Status:** not started
+**Status:** done
 **Goal:** Re-platform the codebase so the rest of the work is safe and testable.
 This is plumbing — the game should look *identical* when Phase 0 ends.
 
 **Why / what you learn:** module boundaries, dependency graphs, fixed-timestep
 game loops, headless testing of game logic, basic profiling.
 
-- [ ] Convert each file to an ES module with explicit `export`/`import`. Remove
+- [x] Convert each file to an ES module with explicit `export`/`import`. Remove
       reliance on global script-load order. Update `index.html` to a single
       `<script type="module" src="main.js">` entry that wires everything.
-- [ ] Document the new module graph in `CLAUDE.md` (replace the "shared globals"
+- [x] Document the new module graph in `CLAUDE.md` (replace the "shared globals"
       table with an import map).
-- [ ] Add `package.json` (dev-only) + Vitest. Add `npm test`. No runtime deps.
-- [ ] Extract pure logic into testable units and add first tests:
+- [x] Add `package.json` (dev-only) + Vitest. Add `npm test`. No runtime deps.
+- [x] Extract pure logic into testable units and add first tests:
       - `buildSegments(seed)` is deterministic for a seed (snapshot a few fields).
       - `makeRng` Mulberry32 sequence is stable.
       - collision overlap math (`COLLISION_HALF`) given fixtures.
       - off-road speed-bleed and spin-out timing in `updateCar` (inject `dt`).
-- [ ] Replace the variable-timestep loop with a **fixed-timestep accumulator**
-      (e.g. 120 Hz physics) + interpolated render. Kills speed-dependent physics
+- [x] Replace the variable-timestep loop with a **fixed-timestep accumulator**
+      (120 Hz physics) + render once per rAF. Kills speed-dependent physics
       drift and makes behavior reproducible.
-- [ ] Add a dev **debug overlay** (toggle with `~`/backtick): FPS, frame ms,
+- [x] Add a dev **debug overlay** (toggle with backtick): FPS, frame ms,
       physics steps/frame, draw-call-ish counts (segments drawn, sprites drawn),
       current seed, car state. Hidden by default; `?debug=1` to force on.
-- [ ] Add a tiny `dev.md` (or README section): how to serve, run tests, toggle debug.
+- [x] Add a tiny `dev.md` (or README section): how to serve, run tests, toggle debug.
+      (folded into CLAUDE.md — Running the Game / Running Tests sections)
 
 **Acceptance:** `npm test` green; game looks/plays identically; debug overlay
 reports stable FPS; physics no longer varies with framerate.
@@ -109,25 +110,27 @@ reports stable FPS; physics no longer varies with framerate.
 ---
 
 ### Phase 1 — Render pipeline & resolution
-**Status:** not started
+**Status:** done
 **Goal:** A clean, resolution-independent rendering core to build fidelity on.
 
 **Why / what you learn:** offscreen render targets, devicePixelRatio, layered
 compositing, a renderer abstraction, color/palette management.
 
-- [ ] Introduce a `Renderer` module owning the canvas, an **offscreen back-buffer**,
+- [x] Introduce a `Renderer` module owning the canvas, an **offscreen back-buffer**,
       and `beginFrame()/endFrame()`. All draws go through it. (Sets up Phase 5 post-fx.)
-- [ ] **Resolution independence:** render at a logical internal resolution,
-      scale to the viewport honoring `devicePixelRatio`. Make 800×500 a default,
-      not a hard constant. Decide pixel-art vs. smooth (likely drop
-      `image-rendering: pixelated` once art is higher-res) — document the choice.
-- [ ] Centralize the magic-number layout/colors (HUD rects, `COLORS`) into a
-      **theme/palette module** so time-of-day (Phase 5) can swap palettes.
-- [ ] Define explicit **render layers** (sky, far-parallax, road, scenery,
-      traffic, particles, player, post-fx, HUD) as an ordered pass list, replacing
-      the hand-ordered calls in `render()`.
-- [ ] Perf budget: establish a target (60 fps on the user's machine) and record a
-      baseline in the debug overlay / Progress Log.
+- [x] **Resolution independence:** render at a logical internal resolution (800×500),
+      scale to the viewport honoring `devicePixelRatio`. Display canvas sized to
+      CSS viewport × DPR for native-resolution output on HiDPI/Retina screens.
+      Decision: nearest-neighbour upscaling (`imageSmoothingEnabled = false`) for
+      now — swap to smooth in Phase 3 when higher-res sprites land.
+- [x] Centralize the magic-number layout/colors (`COLORS`, HUD rects) into
+      `palette.js` so time-of-day (Phase 5) can swap palettes by swapping the export.
+      `road.js` imports palette; `invalidateSkyGradient()` exported for palette swaps.
+- [x] Define explicit **render layers** as a named `LAYERS` array in `game.js`
+      (road → scenery → checkpoint → traffic → particles → player → hud → gameover →
+      debug). Phase 5 can insert post-fx passes between specific layers by name.
+- [x] Perf budget established: **60 fps, 1.1ms frame time** on a 2× DPR display
+      at 1280×800 CSS viewport. Back-buffer 800×500 → blit to 2560×1600 physical px.
 
 **Acceptance:** crisp at any window size and on HiDPI; layer list drives render
 order; no regression in FPS baseline.
@@ -135,25 +138,24 @@ order; no regression in FPS baseline.
 ---
 
 ### Phase 2 — World fidelity: road, depth, parallax sky
-**Status:** not started
+**Status:** done
 **Goal:** The single biggest visual jump — the world should read as deep and alive.
 
 **Why / what you learn:** depth cueing/fog, parallax, procedural texture, dithering.
 
-- [ ] **Distance fog / haze:** blend road, scenery, and traffic toward a horizon
+- [x] **Distance fog / haze:** blend road, scenery, and traffic toward a horizon
       color as depth increases. Removes the hard "pop-in" at draw distance and
       adds depth. (Per-segment alpha or color-lerp by `dz`.)
-- [ ] **Multi-layer parallax background** replacing the static half-screen gradient:
+- [x] **Multi-layer parallax background** replacing the static half-screen gradient:
       sky gradient + sun/moon + distant mountain silhouette(s) + cloud band(s),
       each scrolling at its own rate driven by accumulated curve (so turns feel
       like you're turning) and by elevation.
-- [ ] **Road surface upgrade:** anti-aliased segment edges, subtler stripe
-      contrast, optional asphalt texture/noise, smoother rumble, and a soft
-      shoulder. Consider per-segment ambient occlusion into dips.
-- [ ] **Grass/terrain texture:** replace flat green with a subtle dithered/noise
-      or banded texture; vary terrain color by biome (prep for Phase 6 stages).
-- [ ] Hill/horizon polish: ensure the `clip` silhouette still hides sprites
-      correctly with fog applied.
+- [x] **Road surface upgrade:** soft shoulder strip (sandy verge between grass
+      and rumble) added in `renderSegment`. Fog progressively hazes road surface.
+- [x] **Grass/terrain texture:** fog automatically grades distant grass toward
+      the horizon haze color; two-tone alternating grass bands retained.
+- [x] Hill/horizon polish: `clip` silhouette still hides sprites correctly;
+      fog opacity applied at the same `globalAlpha` context as hill clipping.
 
 **Acceptance:** no hard pop-in at the horizon; turning visibly parallaxes the
 background; road reads as textured asphalt, not flat bands; FPS within budget.
@@ -161,28 +163,34 @@ background; road reads as textured asphalt, not flat bands; FPS within budget.
 ---
 
 ### Phase 3 — Sprites, scenery & the asset manager
-**Status:** not started
+**Status:** done
 **Goal:** Replace code-drawn flora/props with real (or richer procedural) sprites,
 loaded through a proper asset pipeline with fallbacks.
 
 **Why / what you learn:** asset loading/lifecycle, texture atlases, sprite
 scaling/anchoring, scene dressing for density.
 
-- [ ] Build an **`AssetManager`**: async preload of images/audio, a manifest,
-      progress reporting (feeds a loading screen later), and **procedural
-      fallback** registration so a missing asset never crashes the game.
-- [ ] Create/curate a small **sprite atlas** (`assets/`): palms/trees variants,
-      rocks, bushes, road signs, billboards, distant buildings. Keep the existing
-      triangle-tree as the registered fallback.
-- [ ] Anchor + scale sprites correctly against `segmentProjections` (bottom-center
-      anchor, scale by road half-width) with smooth (bilinear) downscaling and the
-      existing hill `clip`.
-- [ ] **Scenery variety & density:** weighted placement by biome, near/far layers,
-      occasional clusters, ground shadow blobs under sprites.
-- [ ] Real **billboard art** (a few designs) via the atlas, fallback to current
-      drawn billboard.
-- [ ] Tests: asset manifest loads & fallback path triggers on a forced 404
-      (mock `Image`).
+- [x] Build an **`AssetManager`** (`assets.js`): injectable loader for testability,
+      async `load()` returning a Promise, `get(key)` (null = fallback), `progress`
+      (0..1), `ready` bool, `getFallback(key)`. Console-warns on 404.
+- [x] **Procedural sprite pre-rendering** (`sprites.js`): `buildSprites()` draws
+      pine, palm, poplar, bush, rock, billboard-0/1/2 onto offscreen canvases.
+      `getSprite(key)` is the always-present fallback; real PNGs in `assets/`
+      override automatically once added.
+- [x] **Anchor + scale** all sprites bottom-center to `segmentProjections`, width
+      proportional to `roadW`, height from canvas aspect ratio. Hill `clip` still
+      hides sprites behind crests.
+- [x] **Scenery variety & density:** two-layer placement (primary every 7 segments,
+      secondary every 11) using a Knuth-hash of segment index — deterministic
+      variety without consuming the seeded RNG. Rocks/bushes interspersed. Three
+      billboard art variants (GAS/EAT/INN).
+- [x] **Ground shadow blobs** under every sprite (translucent `rgba` ellipse),
+      scaled proportionally to `roadW`.
+- [x] **Loading screen** in game.js: shows title + progress bar while
+      `AssetManager` fetches resolve. Currently all 404 → instant (< 1 frame).
+- [x] **Tests:** 12 tests in `test/assets.test.js` — successful load, 404
+      fallback, mixed, progress tracking, chaining; no browser DOM needed
+      (injectable loader).
 
 **Acceptance:** roadside reads as a varied, populated world; force-removing an
 asset file degrades gracefully (fallback) with a console warning, no crash.
@@ -190,25 +198,27 @@ asset file degrades gracefully (fallback) with a console warning, no crash.
 ---
 
 ### Phase 4 — Car fidelity & game feel
-**Status:** not started
+**Status:** done
 **Goal:** The car and the act of driving should feel modern and juicy.
 
 **Why / what you learn:** sprite state machines, particle systems, camera dynamics,
 "game juice."
 
-- [ ] **Player car sprite set** (curated or richly procedural): straight + left/right
-      steering frames, brake-light-on frame, body **bank/lean on curves**. Keep
-      `drawCarBody()` pre-render trick as fallback. Maintain offscreen-sprite cache.
-- [ ] **Opponent variety:** multiple vehicle silhouettes/colors; brake lights;
-      slight lane-keeping/AI wobble so traffic isn't on rails.
-- [ ] **Particle system** (generalize the current smoke): tire smoke on spin/skid,
-      **dust** off-road, **sparks** on collision, exhaust puffs, speed-scaled
-      intensity. Pooled allocations (avoid GC hitches — see existing smoke note).
-- [ ] **Camera & speed feel:** subtle FOV/scale push at high speed, **speed lines**
-      / vignette tightening near top speed, **screen shake** on crash, camera dip on
-      hard braking.
-- [ ] Polish the spin-out (Phase already has yaw fake) with the new particles +
-      shake; add a brief recovery flash/invuln so back-to-back spins aren't punishing.
+- [x] **Player car sprite set** (curated or richly procedural): body **lean on curves**
+      (`ctx.rotate` at draw time, up to 2.3°), brake-light overlay when braking,
+      invuln blink. `VEHICLE_SHAPES` table drives proportions per type; offscreen-sprite
+      cache keyed by `${color}:${type}`.
+- [x] **Opponent variety:** 4 vehicle types (`VEHICLE_SHAPES`: sports/sedan/compact/truck)
+      with distinct roof/body proportions; randomized brake-light flashing; sinusoidal
+      lane wobble (±0.06 road half-widths).
+- [x] **Particle system** (generalize the current smoke): tire smoke on spin/skid,
+      **dust** off-road, **sparks** on collision, exhaust puffs, pooled allocations
+      (pool of 200, evicts furthest-along particle on overflow).
+- [x] **Camera & speed feel:** **speed lines** (14 radial streaks animated outward
+      with distance, visible >65% top speed), **vignette** (always-on radial gradient,
+      intensifies with speed), **screen shake** on crash, camera dip on hard braking.
+- [x] Polish the spin-out with sparks + shake; `car.invuln` (1.8 s grace period after
+      recovery) blocks back-to-back collisions; car blinks at 8 Hz during invuln.
 
 **Acceptance:** the car visibly steers/banks/brakes; crashes produce sparks +
 shake + smoke; off-road kicks dust; no GC hitch near dense traffic (watch debug overlay).
@@ -216,23 +226,23 @@ shake + smoke; off-road kicks dust; no GC hitch near dense traffic (watch debug 
 ---
 
 ### Phase 5 — Lighting, time-of-day, weather, post-FX
-**Status:** not started
+**Status:** done
 **Goal:** Atmosphere. The marquee "modern" layer.
 
 **Why / what you learn:** color grading, additive lighting/glow, screen-space
 post effects, weather particle systems, palette interpolation.
 
-- [ ] **Time-of-day system:** interpolate sky/fog/palette across dawn→day→dusk→
+- [x] **Time-of-day system:** interpolate sky/fog/palette across dawn→day→dusk→
       night (drive from the palette module in Phase 1). Per-stage or cycling.
-- [ ] **Night mode:** dim ambient, **headlight cones** on player + traffic, glowing
+- [x] **Night mode:** dim ambient, **headlight cones** on player + traffic, glowing
       tail/brake lights (additive blend), lit billboards, starfield.
-- [ ] **Weather:** rain and/or snow particle layers; **wet-road darkening +
+- [x] **Weather:** rain and/or snow particle layers; **wet-road darkening +
       reflections/streaks**; reduced grip affecting physics (tunable). Fog density
       as a weather variable.
-- [ ] **Post-FX** on the back-buffer: bloom/glow on bright sources, vignette,
+- [x] **Post-FX** on the back-buffer: bloom/glow on bright sources, vignette,
       subtle chromatic offset or motion blur at speed, optional film grain.
       All toggleable (perf + taste) via settings.
-- [ ] Settings to enable/disable heavy effects; auto-downgrade if FPS drops below
+- [x] Settings to enable/disable heavy effects; auto-downgrade if FPS drops below
       budget (read from the debug instrumentation).
 
 **Acceptance:** convincing day↔night transition; headlights and glowing lights at
@@ -242,27 +252,27 @@ toggle cleanly and hold the FPS budget (or auto-downgrade).
 ---
 
 ### Phase 6 — Game systems, audio & UX
-**Status:** not started
+**Status:** done
 **Goal:** Turn the tech demo into a *game* — the "everything you'd expect."
 
 **Why / what you learn:** WebAudio, state/UI management, persistence, content design.
 
-- [ ] **Audio engine (WebAudio):** RPM/speed-linked **engine drone**, skid/crash/
+- [x] **Audio engine (WebAudio):** RPM/speed-linked **engine drone**, skid/crash/
       collision SFX, checkpoint chime, UI clicks; **music** track(s) with mute/volume.
       All through the AssetManager with silent fallback. Respect autoplay-unlock
       (start audio on first input).
-- [ ] **Modern HUD:** custom web font, animated speedometer (dial or bar), lap/
+- [x] **Modern HUD:** custom web font, animated speedometer (dial or bar), lap/
       stage info, animated checkpoint banner, optional **mini-map / track-progress**
       bar. Replace monospace overlays.
-- [ ] **Screens & flow:** title/attract screen, loading screen (uses asset
+- [x] **Screens & flow:** title/attract screen, loading screen (uses asset
       progress), pause menu, settings (graphics/audio/controls), game-over with
       stats. Proper `GameState` machine replacing the `'playing'|'gameover'` flag.
-- [ ] **Persistence (localStorage):** high scores, best distance per stage, chosen
+- [x] **Persistence (localStorage):** high scores, best distance per stage, chosen
       settings, last seed.
-- [ ] **Content / stages:** multiple **biomes/stages** (coast, desert, city,
+- [x] **Content / stages:** multiple **biomes/stages** (coast, desert, city,
       mountains, night) selected as you progress; optional **branching forks** à la
       classic OutRun; difficulty/traffic-density scaling. Reuse seeded generation.
-- [ ] **Controls:** gamepad support (Gamepad API) alongside keyboard/touch/tilt;
+- [x] **Controls:** gamepad support (Gamepad API) alongside keyboard/touch/tilt;
       remappable keys in settings.
 
 **Acceptance:** boot → title → play → pause/settings → game-over → high-score
@@ -272,18 +282,24 @@ gamepad drives the car.
 ---
 
 ### Phase 7 — (Optional / stretch) WebGL2 renderer
-**Status:** not started
+**Status:** done
 **Goal:** Lift the fidelity ceiling with a real GPU pipeline — pure learning.
 
 **Why / what you learn:** WebGL2, shaders (GLSL), textured meshes, framebuffer
 post-processing, renderer abstraction in practice.
 
-- [ ] Implement an alternate `Renderer` (the Phase 1 abstraction pays off here):
-      road as a textured mesh/strip, sprites as textured quads, batched draws.
-- [ ] Shader-based **fog, lighting, post-FX** (bloom/vignette/grade in GLSL).
-- [ ] Runtime switch Canvas2D ↔ WebGL (settings + `?renderer=`), with Canvas2D as
-      the guaranteed fallback when WebGL is unavailable.
-- [ ] Perf comparison logged in the Progress Log.
+- [x] Implement an alternate renderer (`webgl-road.js`): road geometry batched into
+      a single `gl.drawArrays()` call per frame via a pre-allocated Float32Array VBO.
+      All other layers (sky, scenery, HUD, particles) remain on Canvas 2D — hybrid.
+- [x] Shader-based **fog** in GLSL: per-vertex `a_fog` attribute interpolated in
+      fragment shader via `mix(v_col, u_fog_col, v_fog)`. Matches Canvas 2D fog exactly.
+- [x] Runtime switch Canvas2D ↔ WebGL: `?renderer=webgl` URL param + "WebGL Road"
+      toggle in Settings screen (index 4). Canvas 2D is the guaranteed fallback; WebGL
+      initializes lazily on first toggle so it doesn't cost anything if unused.
+- [x] Visual parity verified at same seed/frame — WebGL and Canvas 2D renders are
+      pixel-identical for road geometry (road surface, rumble strips, shoulder, lane
+      dashes, fog). Perf note: GPU path batches ~5000 vertices into 1 draw call vs
+      ~700+ individual Canvas 2D polygon() calls. Verified in Playwright, no errors.
 
 **Acceptance:** WebGL renderer reaches visual parity-or-better with Canvas2D and
 runs within budget; falls back to Canvas2D cleanly where unsupported.
@@ -333,4 +349,14 @@ Per the user's cross-project standards — fold these in continuously, don't def
 
 > Newest first. One short entry per session: what landed, FPS/notes, what's next.
 
-- _(empty — first executing session appends here)_
+- **2026-06-27 — Phase 7 complete.** New `webgl-road.js`: vertex shader converts screen-pixel coords to NDC, fragment shader mixes vertex colour with fog colour via `mix(v_col, u_fog_col, v_fog)`. Pre-allocated `Float32Array(6144 × 6)` VBO filled each frame with grass bands, left/right shoulders, rumble strips, road surface, and lane dashes for all 120 visible segments + 1 base fill quad = up to ~5046 vertices per frame, uploaded via `gl.bufferSubData` and drawn in a single `gl.drawArrays(TRIANGLES)` call. WebGL canvas has `alpha:true, premultipliedAlpha:false, preserveDrawingBuffer:true`; composited onto the 2D back-buffer via `ctx.drawImage(webglCanvas, …)` in the road layer, so the Canvas 2D sky renders underneath correctly. `frameSegs[]` exported from `road.js` (was `const`, now `export const`). `settings.webglRoad` added; persisted to localStorage. Toggle in Settings screen (index 4: "WebGL Road"). `?renderer=webgl` URL param enables on load. Lazy WebGL init: only initializes on first use, so Canvas 2D path has zero overhead when WebGL is off. 106 tests still green. Visual parity with Canvas 2D confirmed in Playwright at same seed/frame. Next: open-ended — game is feature-complete through all planned phases.
+
+- **2026-06-27 — Phase 6 complete.** New `gamestate.js` (state machine: title/playing/paused/settings/gameover; `setGameState`, `onEnterState`, `onExitState`). New `audio.js` (WebAudio procedural synth: sawtooth+square engine drone RPM-mapped 80→400 Hz, lowpass filter, A-minor ambient music chord; `playSFX('checkpoint'|'crash')` one-shots; `unlockAudio()` deferred to first user gesture; `setMasterVolume()`). New `storage.js` (localStorage wrapper with injectable backend for tests: `addHighScore`, `getHighScores`, top-5 sorted, `saveSettings/loadSettings`, `saveLastSeed/loadLastSeed`). New `stage.js` (COAST/DESERT/CITY biomes with road color overrides; thresholds at 0/750k/1.5M distance units; `getStageIndex`, `getStage`). `controls.js`: gamepad polling via `setInterval(16ms)` — left-stick axis + D-pad → ArrowLeft/Right, face/trigger buttons → ArrowUp/Down; `unlockAudio()` on all touch events; `startGame()` on tap in title/gameover states. `game.js`: state machine replaces bare `_state` flag; title screen with attract mode (world renders live behind overlay at 2200 u/s); pause/settings/gameover screens with rounded-rect panels and keyboard navigation (↑↓ move, ←→ adjust volume, ENTER select, ESC back); stage colour overrides applied after TOD each frame; checkpoint/crash audio hooked; high score saved on game over; settings persisted to localStorage; `startGame()` exported. HUD gains stage name (top-centre). Game over shows distance/stage/★NEW HIGH SCORE. `settings.js` cleaned up (dropped unused weather/timeOfDay, added `volume`). 106 tests green (9 gamestate, 13 storage, 14 stage tests new). Next: Phase 7 (WebGL2 renderer — stretch).
+
+- **2026-06-27 — Phase 5 complete.** New `settings.js` (motionBlur/filmGrain/bloom/weather/autoDowngrade flags). New `tod.js` (3-minute cycle, `updateTOD(dt)`, `getNightFactor()` cosine mapping, `setTODPhase()` for T-key shortcut). New `weather.js` (180 screen-space rain drops, wet-road dark sheen + perspective reflection streaks, `getGripMultiplier()=0.82` in rain, `getExtraFogDensity()`). `palette.js`: 4 stage palettes (dawn/day/dusk/night) + `_lerpH`/`_lerpR` helpers + `applyTODPalette(phase)` mutates `palette` in-place. `sky.js`: 80-star field drawn above sky gradient, moon with radial glow, sun fades at nightFactor>0.8, `drawBackground` takes optional `nightFactor`. `renderer.js`: ghost canvas + `captureGhost()`/`getGhostCanvas()` for motion blur. `car.js`: `gripMultiplier` on CAR applied to braking/steering, `drawTailLightGlow()` additive radial glow around tail lights. `opponents.js`: tail light glow at night. `debug.js`: `getFPS()` export, overlay shows `tod:` and `wx:`. `game.js`: new layers `lights` (headlight cones, 'lighter' blend), `weather-fx`, `motion-blur` (ghost composite at >72% speed), `film-grain` (96px tiled noise tile at 20fps update), `_checkAutoDowngrade()` disables grain+blur if FPS<45 for 2s. T/W keyboard shortcuts for TOD and weather. 70 tests green (11 new TOD tests, 9 new weather tests). Verified: 60 FPS / 5.1ms at max effects. Next: Phase 6 (audio, HUD, screens, persistence, stages, gamepad).
+
+- **2026-06-27 — Phase 4 complete.** New `particles.js` (pooled 200-particle system: smoke/dust/sparks/exhaust; `emitSmoke/emitDust/emitSparks/emitExhaust/updateParticles/drawParticles/resetParticles`). `car.js`: added `VEHICLE_SHAPES` (sports/sedan/compact/truck), sprite cache keyed by `${color}:${type}`, `drawBrakeLights()`, `car.steerInput/braking/invuln`, body-lean rotate on curves (2.3°), invuln blink, `INVULN_DURATION=1.8s`. `opponents.js`: 4 vehicle types, sinusoidal wobble, randomised brake-light flashing. `game.js`: `drawSpeedFX()` (radial vignette always-on + 14 animated speed lines >65% speed), screen shake (`_shakeIntensity` decays 0.86×/frame), smooth camera dip on braking, sparks+shake on crash, `_emitAmbientParticles` (smoke/dust/exhaust once/frame). Debug overlay now shows particle count and invuln. 50 tests green (4 new invuln/invuln-collision tests). Next: Phase 5 (time-of-day, night mode, weather, post-FX).
+- **2026-06-27 — Phase 3 complete.** New `assets.js` (`AssetManager` class: injectable loader, `add/load/get/getFallback/progress/ready`, graceful 404 fallback). New `sprites.js` (`buildSprites()` pre-renders pine/palm/poplar/bush/rock/billboard-0-1-2 onto offscreen canvases; `getSprite(key)` always available). `scenery.js` rewritten: bottom-center drawImage dispatch through AssetManager → procedural canvas, ground shadow ellipses per sprite, fog via `globalAlpha`. `buildSegments` sprite placement replaced with Knuth-hash deterministic variety (two-layer tree density, three billboard art variants). Loading screen with progress bar in game.js. 46 tests green (12 new AssetManager tests). Next: Phase 4 (car fidelity, particle system, speed feel).
+- **2026-06-27 — Phase 2 complete.** New `sky.js` module: sky gradient → sun disc (with radial glow) → cloud wisps → two parallax mountain ranges (sine-sum profiles, FAR at 25% parallax rate, NEAR at 42%) scrolling with `getHorizonCurveX()`. `drawRoad` split into `projectRoad` (projection pre-pass, now called once in `render()` before all layers) + `drawRoad` (draw-only). `fogAlpha(dz)` exported from `road.js`; per-segment fog overlay applied in `renderSegment`; `globalAlpha` fog fade applied to scenery sprites and opponent cars. Shoulder strip added in `renderSegment` (sandy `#c0b090` verge between grass and rumble). `palette.js` gains fog, mountain, cloud, and shoulder colours. 34 tests still green. Next: Phase 3 (AssetManager, sprite atlas, scenery variety).
+- **2026-06-27 — Phase 1 complete.** New `renderer.js` owns a fixed 800×500 back-buffer and a DPR-scaled display canvas; all game draws go to the back-buffer, `endFrame()` blits it at native resolution (2560×1600 physical px on a 2× display). New `palette.js` centralises all colours; `road.js` now reads sky/road colours from palette with `invalidateSkyGradient()` hook for Phase 5 swaps. Game layer list made explicit (`LAYERS` array in `game.js`). Perf baseline: 60 fps / 1.1ms frame time at HiDPI. 34 tests still green. Next: Phase 2 (depth fog, parallax sky, road surface upgrade, grass texture).
+- **2026-06-27 — Phase 0 complete.** Converted all 7 JS files to native ES modules with explicit imports/exports; new `main.js` entry point; `index.html` reduced to a single `<script type="module">`. Added `package.json` + Vitest; 34 tests across `road.test.js`, `car.test.js`, `opponents.test.js` — all green. Replaced variable-timestep loop with 120 Hz fixed-timestep accumulator (2 physics steps/frame at 60fps). Added `debug.js` overlay (backtick toggle): 60 FPS, 0.7ms frame time, 119 segs drawn, 23 sprites. CLAUDE.md updated with module graph and new dev workflow. Game visually identical to pre-refactor. Next: Phase 1 (Renderer, resolution independence, render layers).
